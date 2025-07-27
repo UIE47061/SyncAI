@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.env
+.env
+.venv
+venv/
+ENV/
+env/
+*.egg-info/
+dist/
+build/
+.eggs/
+pip-wheel-metadata/
+
+# ai_models
+ai_models/*.gguf
+
+# VSCode
+.vscode/
+.history/
+
+# Node (for前端)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+package-lock.json
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+
+# Others
+*.sqlite3
+*.db
+*.bak
+
+# Local env
+.env.*
+!.env.example
+
+# Coverage
+htmlcov/
+.coverage
+.tox/
+.pytest_cache/
+.cache/
+coverage.xml
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Frontend
