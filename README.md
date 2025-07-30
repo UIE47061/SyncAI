@@ -61,8 +61,7 @@ npm run dev
 ## 🐍 後端啟動說明（FastAPI + LLM）
 
 ```bash
-# 1. 進入 backend
-cd backend
+# 1. 在 SyncAI 資料夾亞
 
 # 2. 建立 python 虛擬環境（可選）
 python -m venv .venv
@@ -76,7 +75,7 @@ source .venv/bin/activate
 pip install fastapi uvicorn llama-cpp-python
 
 # 4. 啟動後端服務
-uvicorn main:app --reload
+uvicorn backend.main:app --reload --host 0.0.0.0
 ```
 
 - LLM 模型建議放於 `ai_models/`，可自由替換

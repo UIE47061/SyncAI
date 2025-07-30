@@ -1,56 +1,93 @@
 <template>
   <div class="discussion-bg">
-    <div class="discussion-main-card">
-      <header style="display: flex; align-items: center; justify-content: space-between;">
-        <h1>主題討論控場</h1>
-        <!-- 小齒輪按鈕 -->
-        <button class="gear-btn" @click="showSetting = !showSetting" title="設定">
-          <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
-            <path d="M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7zm7.43-2.06c.04-.3.07-.61.07-.94s-.03-.64-.07-.94l2.11-1.65a.5.5 0 0 0 .12-.64l-2-3.46a.5.5 0 0 0-.6-.22l-2.49 1a7.03 7.03 0 0 0-1.62-.94l-.38-2.65A.5.5 0 0 0 13 2h-4a.5.5 0 0 0-.5.42l-.38 2.65c-.59.22-1.14.52-1.62.94l-2.49-1a.5.5 0 0 0-.6.22l-2 3.46a.5.5 0 0 0 .12.64l2.11 1.65c-.04.3-.07.61-.07.94s.03.64.07.94l-2.11 1.65a.5.5 0 0 0-.12.64l2 3.46a.5.5 0 0 0 .6.22l2.49-1c.48.42 1.03.72 1.62.94l.38 2.65A.5.5 0 0 0 9 22h4a.5.5 0 0 0 .5-.42l.38-2.65c.59-.22 1.14-.52 1.62-.94l2.49 1a.5.5 0 0 0 .6-.22l2-3.46a.5.5 0 0 0-.12-.64l-2.11-1.65z" fill="#888"/>
-          </svg>
-        </button>
-      </header>
+    <!-- 齒輪 -->
+    <button class="gear-btn" @click="showSetting = !showSetting" title="設定" aria-label="設定">
+      <!-- SVG 齒輪圖示，強烈顯眼 -->
+      <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+        <circle cx="14" cy="14" r="12" fill="#23232b" stroke="#33aaff" stroke-width="2"/>
+        <g stroke="#33aaff" stroke-width="2" stroke-linecap="round">
+          <path d="M14 6V3"/>
+          <path d="M14 25v-3"/>
+          <path d="M22 14h3"/>
+          <path d="M3 14h3"/>
+          <path d="M19.8 8.2l2.1-2.1"/>
+          <path d="M6.1 21.9l2.1-2.1"/>
+          <path d="M19.8 19.8l2.1 2.1"/>
+          <path d="M6.1 6.1l2.1 2.1"/>
+        </g>
+        <circle cx="14" cy="14" r="4.2" fill="#18191d" stroke="#33aaff" stroke-width="2"/>
+      </svg>
+    </button>
 
-      <!-- 設定區塊：點齒輪才顯示 -->
-      <TopicSettingBlock
-        v-if="showSetting"
-        v-model:topic="topic"
-        v-model:timerInput="timerInput"
-        v-model:countdownActive="countdownActive"
-        v-model:anonymousMode="anonymousMode"
-        @start="startTimer"
-        @reset="resetTimer"
-      />
+    <div class="main-row">
+      <!-- 主內容區 -->
+      <div class="discussion-main-card">
+        <header class="discussion-header">
+          <h1>主題討論控場</h1>
+        </header>
 
-      <section class="topic-now">
-        <h2>目前主題：</h2>
-        <div class="current-topic">{{ topic || '（尚未設定主題）' }}</div>
-        <div v-if="countdownActive || timeup" class="timer-bar">
-          <span v-if="countdownActive" :class="{ 'danger': timeLeft <= 10 }">⏰ {{ timeLeft }} 秒</span>
-          <span v-else class="timeout-text">🛑 時間到</span>
-        </div>
-      </section>
-
-      <section class="comment-area">
-        <h3>留言區</h3>
-        <div class="comment-list">
-          <div class="comment-item" v-for="msg in comments" :key="msg.id">
-            <span v-if="!anonymousMode" class="comment-name">{{ msg.nickname }}：</span>
-            <span class="comment-content">{{ msg.content }}</span>
+        <section class="topic-now">
+          <h2>目前主題：</h2>
+          <div class="current-topic">{{ topic || '（尚未設定主題）' }}</div>
+          <div v-if="countdownActive || timeup" class="timer-bar">
+            <span v-if="countdownActive" :class="{ 'danger': timeLeft <= 10 }">⏰ {{ timeLeft }} 秒</span>
+            <span v-else class="timeout-text">🛑 時間到</span>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section v-if="timeup" class="after-timeup">
-        <button @click="addTime">＋加 60 秒</button>
-        <button @click="aiSummary">AI 統整</button>
-      </section>
+        <section class="comment-area">
+          <h3>留言區</h3>
+          <div class="comment-list">
+            <div class="comment-item" v-for="msg in comments" :key="msg.id">
+              <span v-if="!anonymousMode" class="comment-name">{{ msg.nickname }}：</span>
+              <span class="comment-content">{{ msg.content }}</span>
+            </div>
+          </div>
+        </section>
+
+        <section v-if="timeup" class="after-timeup">
+          <button @click="addTime">＋加 60 秒</button>
+          <button @click="aiSummary">AI 統整</button>
+        </section>
+      </div>
+
+      <!-- 右側：主持人控制面板（浮動 modal） -->
+      <transition name="side-panel-fade">
+        <div v-if="showSetting" class="overlay" @click.self="showSetting = false">
+          <aside class="side-panel" style="display:flex; flex-direction: column; gap: 1.3em; padding: 2em 2.4em; border-radius: 20px; background: #1e2538; box-shadow: 0 8px 24px rgba(0,0,0,0.35); font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #cbd5e1;">
+            <div class="form-group topic-input" style="display: flex; flex-direction: column; gap: 0.4em;">
+              <label for="topic-input" style="font-weight: 600; font-size: 1.05em;">主題</label>
+              <input id="topic-input" type="text" v-model="topic" placeholder="請輸入討論主題" style="width: 100%; border-radius: 12px; border: none; padding: 0.6em 1em; font-size: 1em; background: #2a2f4a; color: #e2e8f0; box-shadow: inset 0 0 4px #3b4a6b;" />
+            </div>
+
+            <div class="form-group timer-section" style="display: flex; flex-direction: column; gap: 0.8em;">
+              <label for="timer-input" style="font-weight: 600; font-size: 1.05em;">時間（分鐘）</label>
+              <input id="timer-input" type="number" min="1" v-model="timerInput" style="width: 100%; border-radius: 12px; border: none; padding: 0.55em 1em; font-size: 1em; background: #2a2f4a; color: #e2e8f0; box-shadow: inset 0 0 4px #3b4a6b;" />
+              <div class="quick-buttons" style="display: flex; gap: 0.6em; margin-top: 0.2em;">
+                <button type="button" @click="timerInput = 5" style="flex: 1; background: #3b4a6b; color: #a5b4fc; border: none; border-radius: 10px; padding: 0.5em 0; font-weight: 600; cursor: pointer; transition: background-color 0.2s;">5 分鐘</button>
+                <button type="button" @click="timerInput = 10" style="flex: 1; background: #3b4a6b; color: #a5b4fc; border: none; border-radius: 10px; padding: 0.5em 0; font-weight: 600; cursor: pointer; transition: background-color 0.2s;">10 分鐘</button>
+                <button type="button" @click="timerInput = 15" style="flex: 1; background: #3b4a6b; color: #a5b4fc; border: none; border-radius: 10px; padding: 0.5em 0; font-weight: 600; cursor: pointer; transition: background-color 0.2s;">15 分鐘</button>
+                <button type="button" @click="timerInput = 30" style="flex: 1; background: #3b4a6b; color: #a5b4fc; border: none; border-radius: 10px; padding: 0.5em 0; font-weight: 600; cursor: pointer; transition: background-color 0.2s;">30 分鐘</button>
+              </div>
+            </div>
+
+            <div class="form-group anonymous-toggle" style="display: flex; align-items: center; gap: 0.8em; font-weight: 600; font-size: 1em; color: #a5b4fc;">
+              <input id="anonymous-checkbox" type="checkbox" v-model="anonymousMode" style="width: 18px; height: 18px; cursor: pointer;" />
+              <label for="anonymous-checkbox" style="cursor: pointer; user-select: none;">匿名留言</label>
+            </div>
+
+            <button @click="startTimer" style="margin-top: auto; background-color: #3b82f6; color: white; font-weight: 700; font-size: 1.15em; padding: 0.85em 0; border-radius: 16px; border: none; cursor: pointer; width: 100%; box-shadow: 0 4px 12px rgb(59 130 246 / 0.6); transition: background-color 0.3s;">
+              啟動倒數
+            </button>
+          </aside>
+        </div>
+      </transition>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import TopicSettingBlock from './TopicSettingBlock.vue'
 import { useRoute } from 'vue-router'
 
@@ -61,6 +98,10 @@ const countdownActive = ref(false)
 const timeup = ref(false)
 const anonymousMode = ref(false)
 const showSetting = ref(false)
+// 頁面進入時 side-panel 預設隱藏
+onMounted(() => {
+  showSetting.value = false
+})
 const comments = ref([
   { id: 1, nickname: 'U1', content: '我覺得可以先釐清需求' },
   { id: 2, nickname: 'U2', content: '設計要簡潔，流程流暢！' },
@@ -140,38 +181,79 @@ const aiSummary = () => {
 
 <style scoped>
 .gear-btn {
-  background: none;
+  background: rgba(30, 40, 60, 0.78);
   border: none;
   cursor: pointer;
-  padding: 0.2em;
-  margin-left: 0.5em;
+  padding: 0.32em 0.45em;
+  margin-left: 1em;
   display: flex;
   align-items: center;
+  border-radius: 50%;
+  transition: box-shadow 0.13s, background 0.15s;
+  box-shadow: 0 2px 10px rgba(51,170,255,0.09);
+  position: absolute;
+  top: 1.2em;
+  right: 1.5em;
+  z-index: 1001;
 }
 .gear-btn svg {
   vertical-align: middle;
+  filter: drop-shadow(0 0 2px #33aaff88);
+}
+.gear-btn:hover, .gear-btn:focus {
+  background: #23232b;
+  box-shadow: 0 0 0 3px #33aaff33;
+  outline: none;
 }
 .discussion-bg {
   min-height: 100vh;
   background: #18191d;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
   align-items: center;
+  justify-content: center;
+  position: relative;
+  width: 100vw;
+  min-height: 100vh;
+  padding: 0;
+}
+.main-row {
+  display: flex;
+  flex-direction: row;
+  gap: 36px;
+  align-items: flex-start;
+  width: 100%;
+  max-width: 1160px;
+  justify-content: center;
 }
 .discussion-main-card {
-  width: 540px;
-  max-width: 98vw;
-  background: #222328;
-  border-radius: 16px;
-  box-shadow: 0 6px 30px rgba(0,0,0,0.18);
+  flex: 1 1 540px;
+  max-width: 600px;
+  min-width: 320px;
+  margin: 0 auto;
+  background: #222328e6;
+  border-radius: 18px;
+  box-shadow: 0 8px 36px rgba(0,0,0,0.23), 0 0px 0px 1.5px #33aaff22;
   padding: 2.2em 2em 1.2em 2em;
+  z-index: 10;
+  position: relative;
 }
-header h1 {
-  text-align: center;
-  font-size: 1.55em;
-  margin-bottom: 1em;
-  letter-spacing: 1px;
+
+.discussion-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.7em;
+  margin-bottom: 1.15em;
+  position: relative;
+}
+.discussion-header h1 {
+  flex: 1 0 auto;
+  font-size: 1.57em;
+  margin: 0;
+  letter-spacing: 1.2px;
   color: #fff;
+  text-align: left;
 }
 .topic-setting {
   display: flex;
@@ -282,8 +364,81 @@ header h1 {
   font-weight: bold;
   cursor: pointer;
 }
-@media (max-width: 600px) {
-  .discussion-main-card { padding: 1.1em 0.3em; width: 99vw; }
-  .topic-setting { flex-direction: column; align-items: stretch; gap: 0.7em; }
+
+/* 新增 overlay 與浮動 side-panel 樣式 */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(24,25,29,0.72);
+  z-index: 1000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 1.5em;
+  backdrop-filter: blur(2.5px);
+}
+
+.side-panel {
+  background: rgba(38,40,55,0.97);
+  border-radius: 18px;
+  box-shadow: 0 8px 36px rgba(0,0,0,0.25), 0 0 0 1.5px #33aaff44;
+  padding: 1.2em 1.3em 1em 1.3em;
+  width: 360px;
+  max-width: 100vw;
+  max-height: 90vh;
+  overflow-y: auto;
+  position: relative;
+}
+
+.gear-btn-fixed {
+  position: fixed;
+  top: 28px;
+  right: 36px;
+  z-index: 2001;
+  background: rgba(30,40,60,0.88);
+  border: none;
+  border-radius: 50%;
+  box-shadow: 0 2px 12px rgba(51,170,255,0.12);
+  padding: 0.36em 0.47em;
+  cursor: pointer;
+  transition: box-shadow 0.15s, background 0.15s;
+}
+.gear-btn-fixed:hover, .gear-btn-fixed:focus {
+  background: #23232b;
+  box-shadow: 0 0 0 4px #33aaff44;
+}
+
+/* RWD 下，side-panel 保持置中 */
+@media (max-width: 1500px) {
+  .gear-btn-fixed { 
+    top: 11px; right: 8px; 
+  }
+  .main-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    max-width: 1000vw;
+    z-index: 1;
+  }
+  .discussion-main-card {
+    max-width: 98vw;
+    margin: 0 auto;
+    position: relative;
+    z-index: 10;
+  }
+  .overlay {
+    justify-content: center;
+    align-items: center;
+    padding: 0;
+  }
+  .side-panel {
+    width: 100vw;
+    max-width: 100vw;
+    border-radius: 14px;
+    box-shadow: 0 8px 36px rgba(0,0,0,0.25), 0 0 0 1.5px #33aaff44;
+    max-height: 70vh;
+    padding: 1.1em 0.9em 0.9em 0.9em;
+    background: rgba(30,40,60,0.97);
+  }
 }
 </style>
