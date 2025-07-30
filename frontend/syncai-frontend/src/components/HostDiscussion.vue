@@ -38,7 +38,8 @@
         <section class="comment-area">
           <h3>留言區</h3>
           <div class="comment-list">
-            <div class="comment-item" v-for="msg in comments" :key="msg.id">
+            <div class="comment-item" v-for="msg in comments" :key="msg.id || msg.ts || (msg.time + msg.nickname)">
+              <!-- 留言顯示是否匿名可依 room 狀態的 anonymous 屬性決定 -->
               <span v-if="!anonymousMode" class="comment-name">{{ msg.nickname }}：</span>
               <span class="comment-content">{{ msg.content }}</span>
             </div>
@@ -87,7 +88,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import TopicSettingBlock from './TopicSettingBlock.vue'
 import { useRoute } from 'vue-router'
 
@@ -102,11 +103,8 @@ const showSetting = ref(false)
 onMounted(() => {
   showSetting.value = false
 })
-const comments = ref([
-  { id: 1, nickname: 'U1', content: '我覺得可以先釐清需求' },
-  { id: 2, nickname: 'U2', content: '設計要簡潔，流程流暢！' },
-  { id: 3, nickname: 'U3', content: '建議先討論RWD跟留言同步' }
-])
+// 留言資料，預設為空陣列，動態取得
+const comments = ref([])
 
 let timer = null
 const route = useRoute()
@@ -115,6 +113,30 @@ const roomId = route.query.room
 const API_BASE = window.location.hostname === 'localhost'
   ? 'http://localhost:8000'
   : `http://${window.location.hostname}:8000`
+
+let commentsInterval = null
+
+/**
+ * 向後端取得留言資料，並寫入 comments
+ * 若留言 time 欄位不存在，則補上 new Date().toLocaleTimeString()
+ */
+async function fetchComments() {
+  try {
+    // 向 API 取得留言資料
+    const res = await fetch(`${API_BASE}/api/room_comments?room=${roomId}`)
+    if (!res.ok) return
+    const arr = await res.json()
+    const list = Array.isArray(arr.comments) ? arr.comments : []
+    // 確保每則留言有 time 欄（若無則補 new Date().toLocaleTimeString()）
+    comments.value = list.map(msg => ({
+      ...msg,
+      time: msg.time ? msg.time : new Date().toLocaleTimeString()
+    }))
+  } catch (e) {
+    // 可視需求顯示錯誤訊息
+    // console.error('fetchComments error', e)
+  }
+}
 
 const startTimer = async () => {
   if (!topic.value || timerInput.value <= 0) return
@@ -177,6 +199,24 @@ const addTime = () => {
 const aiSummary = () => {
   alert('（這裡串接 AI 摘要功能）')
 }
+
+// ----- 留言同步邏輯 -----
+onMounted(() => {
+  // 頁面進入時自動取得留言
+  fetchComments()
+  // 每 2 秒輪詢同步留言
+  commentsInterval = setInterval(fetchComments, 2000)
+})
+onUnmounted(() => {
+  if (commentsInterval) clearInterval(commentsInterval)
+})
+
+/**
+ * 發送留言後自動刷新留言（請將此函數於 sendComment 或相關流程呼叫）
+ * 範例如下：
+ *   await sendComment(...)
+ *   await fetchComments()
+ */
 </script>
 
 <style scoped>

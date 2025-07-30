@@ -110,6 +110,14 @@ class CommentRequest(BaseModel):
     nickname: str
     content: str
 
+# 取得所有留言，回傳順序依 ts 時間升冪
+@router.get("/api/room_comments")
+def get_room_comments(room: str):
+    comments = []
+    if room in room_data:
+        comments = sorted(room_data[room]["comments"], key=lambda x: x["ts"])
+    return {"comments": comments}
+
 @router.post("/api/room_comment")
 def add_comment(data: CommentRequest):
     import time
