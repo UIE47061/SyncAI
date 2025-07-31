@@ -1,12 +1,36 @@
-from fastapi import APIRouter, Request, Query, Body
+from fastapi import APIRouter, Request, HTTPException, Body
 from pydantic import BaseModel
 from datetime import datetime, timedelta
+import random, string
 
 router = APIRouter()
 
+ROOMS = {}  # 可以放檔案上方
 participants = {}  # { room: [ { device_id, nickname, last_seen } ] }
 room_status = {}  # { room_id: "waiting" or "discussion" }
 room_data = {}  # { room_id: { "topic": str, "countdown": int, "time_start": datetime, "comments": [ {nickname, content, ts} ] } }
+
+class RoomCreate(BaseModel):
+    title: str
+    host: str
+
+@router.post("/api/rooms")
+def create_room(room: RoomCreate):
+    code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+    while code in ROOMS:
+        code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+    ROOMS[code] = {
+        "code": code,
+        "title": room.title,
+        "host": room.host,
+        "created_at": datetime.now().isoformat(),
+        "questions": [],
+        "participants": 0,
+        "is_active": True,
+        "settings": {"allowQuestions": True, "allowVoting": True}
+    }
+    return ROOMS[code]
+
 
 class JoinRequest(BaseModel):
     room: str
