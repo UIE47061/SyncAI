@@ -73,7 +73,7 @@
 *::after {
   box-sizing: border-box;
   margin: 0;
-  font-weight: normal;
+  /* font-weight: normal; */
 }
 
 body {
@@ -122,7 +122,6 @@ body::-webkit-scrollbar-thumb {
 .btn-outline:hover,
 .btn-outline:focus {
   background: var(--primary-color);
-  color: #fff !important;
 }
 
 /* ========== 其它顏色語意的 class 建議都能正常使用 ========== */

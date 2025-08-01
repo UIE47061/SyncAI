@@ -7,7 +7,7 @@ router = APIRouter(prefix="/ai", tags=["AI"])
 
 # 載入模型，只做一次（全域單例）
 MODEL_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../ai_models/mistral-7b-instruct-v0.2.Q5_K_M.gguf'))
-llm = Llama(model_path=MODEL_PATH)
+# llm = Llama(model_path=MODEL_PATH)
 
 class AskRequest(BaseModel):
     prompt: str

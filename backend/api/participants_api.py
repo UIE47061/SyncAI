@@ -97,7 +97,8 @@ def set_room_status(room: str = Body(...), status: str = Body(...)):
 
 @router.get("/api/room_status")
 def get_room_status(room: str):
-    return {"status": room_status.get(room, "waiting")}
+    print(room_status)  # Debugging line to check room_status
+    return {"status": room_status.get(room, "Not set")}
 
 # 主持人設定主題與倒數
 @router.post("/api/room_state")

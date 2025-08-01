@@ -1,5 +1,5 @@
 .host-content {
-    max-width: 1400px;
+    max-width: 1500px;
     margin: 0 auto;
     padding: 2rem 1rem;
 }
@@ -20,7 +20,7 @@
 .room-info {
     display: flex;
     gap: 1rem;
-    font-size: 0.875rem;
+    font-size: 0.92rem;
 }
 
 .room-code, .participant-count {

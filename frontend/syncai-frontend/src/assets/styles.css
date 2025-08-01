@@ -41,7 +41,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;  /* 兩邊貼齊 */
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
   padding: 0 1rem;
   width: 100%;
@@ -110,7 +110,7 @@ body {
 
 /* Main Content */
 .main-content {
-    max-width: 1200px;
+    max-width: 1400px;
     width: 100%;
     margin: 0 auto;
     padding: 0 1rem;
