@@ -1,74 +1,104 @@
 <template>
   <div>
+    <!-- 導覽列 -->
     <nav class="navbar">
       <div class="nav-container">
         <div class="nav-brand">
-          <h1>MeetQ</h1>
+          <h1>SyncAI</h1>
           <span>參與者</span>
         </div>
         <div class="nav-actions">
           <span class="room-info">代碼: <strong>{{ roomCode || '------' }}</strong></span>
+          <div class="status-indicator" :class="'status-' + roomStatus.toLowerCase()">
+            <i class="status-icon" :class="statusIcon"></i>
+            {{ roomStatusText }}
+          </div>
+          <div class="timer-display" v-if="remainingTime > 0">
+            <span class="timer">{{ formattedRemainingTime }}</span>
+          </div>
         </div>
       </div>
     </nav>
 
     <main class="participant-content">
       <div class="participant-layout">
-        <!-- 會議資訊/分享 -->
-        <div class="participant-info-panel">
-          <h2>會議資訊</h2>
-          <div class="info-row">
-            <div class="code-qrcode-row">
-              <div class="code-col">
-                <div class="info-label">會議室代碼</div>
-                <div class="code-display">
-                  <span class="code-text">{{ roomCode }}</span>
-                  <button class="btn-icon" @click="copyRoomCode" title="複製代碼">📋</button>
-                </div>
-              </div>
-              <div class="qrcode-col" v-if="roomLink">
-                <qrcode-vue :value="roomLink" :size="90" />
-                <div class="qrcode-caption">點擊或掃碼邀朋友</div>
-              </div>
+        <!-- 主題與問題區 -->
+        <div class="topic-questions-container">
+          <!-- 當前主題區塊 -->
+          <div class="topic-panel">
+            <div class="info-title">
+              <i class="fa-solid fa-lightbulb"></i> 當前主題
             </div>
-            <div class="link-row">
-              <span class="info-label">加入連結</span>
-              <div class="code-display">
-                <span class="link-text">{{ roomLink }}</span>
-                <button class="btn-icon" @click="copyRoomLink" title="複製連結">📋</button>
-              </div>
+            <div class="current-topic">
+              {{ currentTopic || '等待主持人設定主題' }}
             </div>
           </div>
+          
+          <!-- 提問面板 -->
+          <div class="question-submit-panel">
+            <div class="info-title">
+              <i class="fa-solid fa-message"></i> 提出問題
+            </div>
+            <form @submit.prevent="submitQuestion">
+              <input 
+                v-model="newQuestion" 
+                placeholder="請輸入您的問題..." 
+                :disabled="roomStatus !== 'Discussion'"
+              />
+              <button 
+                type="submit" 
+                class="btn btn-primary" 
+                :disabled="!newQuestion.trim() || roomStatus !== 'Discussion'"
+              >
+                <i class="fa-solid fa-paper-plane"></i> 提交問題
+              </button>
+            </form>
+          </div>
         </div>
-        <!-- 提問區 -->
-        <div class="question-submit-panel">
-          <h2>我要提問</h2>
-          <form @submit.prevent="submitQuestion">
-            <input v-model="newQuestion" placeholder="輸入你的問題" maxlength="80" />
-            <button class="btn btn-primary" :disabled="!canSubmit">送出</button>
-          </form>
-        </div>
-        <!-- 問題列表 -->
+        
+        <!-- 問題列表面板 -->
         <div class="questions-panel">
-          <h2>問題列表</h2>
-          <div v-if="questions.length === 0" class="empty-state">
-            <div class="empty-icon">🤔</div>
-            <div>目前沒有問題，趕快發問吧！</div>
+          <div class="info-title">
+            <i class="fa-solid fa-comments"></i> 問題列表
           </div>
-          <div v-else>
-            <div v-for="q in questions" :key="q.id" class="question-item">
+          
+          <div v-if="questions.length === 0" class="empty-state">
+            <div class="empty-icon">
+              <i class="fa-regular fa-comment-dots"></i>
+            </div>
+            <div class="empty-text">目前還沒有問題。在討論期間，您可以提出問題！</div>
+          </div>
+          
+          <div v-else class="question-list">
+            <div v-for="q in sortedQuestions" :key="q.id" class="question-item">
               <div class="question-header">
-                <span v-html="escapeHtml(q.text)"></span>
-                <div class="question-votes">
-                  <button class="btn-icon" @click="voteQuestion(q.id)" :disabled="q.answered">
-                    👍
-                  </button>
-                  <span>{{ q.votes || 0 }}</span>
+                <div v-if="q.answered" class="answered-tag">
+                  <i class="fa-solid fa-check"></i> 已回答
                 </div>
+                <div class="question-votes">
+                  <button 
+                    class="vote-button" 
+                    @click="voteQuestion(q.id)" 
+                    :disabled="q.answered || roomStatus !== 'Discussion'"
+                    :class="{'voted': hasVoted(q.id)}"
+                  >
+                    <i class="vote-icon fa-solid fa-thumbs-up"></i>
+                    <span class="vote-count">{{ q.votes || 0 }}</span>
+                  </button>
+                </div>
+              </div>
+              <div class="question-content">
+                {{ q.text }}
               </div>
               <div class="question-meta">
-                <span v-if="q.answered" class="answered-tag">已回答</span>
-                <span>{{ formatTime(q.createdAt) }}</span>
+                <div class="meta-item">
+                  <i class="meta-icon fa-regular fa-clock"></i>
+                  <span>{{ formatTime(q.createdAt) }}</span>
+                </div>
+                <div class="meta-item" v-if="q.nickname">
+                  <i class="meta-icon fa-regular fa-user"></i>
+                  <span>{{ q.nickname }}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -84,6 +114,9 @@
         :class="['notification', `notification-${msg.type}`]"
         style="position: fixed; top: 20px; right: 20px; z-index: 2000; margin-bottom: 12px;"
       >
+        <i v-if="msg.type === 'success'" class="fa-solid fa-check-circle"></i>
+        <i v-else-if="msg.type === 'error'" class="fa-solid fa-exclamation-circle"></i>
+        <i v-else class="fa-solid fa-info-circle"></i>
         <span>{{ msg.text }}</span>
         <button @click="removeNotification(i)">&times;</button>
       </div>
@@ -92,13 +125,12 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import QrcodeVue from 'qrcode.vue'
 
-const API_BASE = window.location.hostname === 'localhost'
-  ? 'http://localhost:8000'
-  : `http://${window.location.hostname}:8000`
+// API 基礎 URL 設定
+const API_BASE_URL = 'http://localhost:8000' // 根據實際後端服務的地址和端口進行調整
 
 const route = useRoute()
 const roomCode = ref(route.query.room || '')
@@ -106,22 +138,217 @@ const roomLink = ref('')
 const questions = ref([])
 const newQuestion = ref('')
 const notifications = ref([])
+const roomStatus = ref('NotFound')
+const currentTopic = ref('')
+const remainingTime = ref(0)
+const votedQuestions = ref(new Set())
+const questionSort = ref('latest')
 
-const canSubmit = computed(() => !!newQuestion.value.trim())
+// 計算屬性
+const canSubmit = computed(() => !!newQuestion.value.trim() && roomStatus.value === 'Discussion')
+
+// 排序後的問題列表
+const sortedQuestions = computed(() => {
+  if (questionSort.value === 'votes') {
+    return [...questions.value].sort((a, b) => (b.votes || 0) - (a.votes || 0))
+  } else {
+    return [...questions.value].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+  }
+})
+
+// 房間狀態顯示文字
+const roomStatusText = computed(() => {
+  switch(roomStatus.value) {
+    case 'NotFound': return '未啟動';
+    case 'Stop': return '休息中';
+    case 'Discussion': return '討論中';
+    case 'End': return '已結束';
+    default: return '未知';
+  }
+})
+
+// 格式化剩餘時間
+const formattedRemainingTime = computed(() => {
+  if (remainingTime.value <= 0) return '00:00:00';
+  
+  const hours = Math.floor(remainingTime.value / 3600);
+  const minutes = Math.floor((remainingTime.value % 3600) / 60);
+  const seconds = remainingTime.value % 60;
+  
+  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+})
+
+// 房間狀態圖示
+const statusIcon = computed(() => {
+  switch(roomStatus.value) {
+    case 'Discussion': return 'fa-solid fa-comments';
+    case 'Stop': return 'fa-solid fa-pause';
+    case 'End': return 'fa-solid fa-flag-checkered';
+    case 'NotFound': return 'fa-solid fa-circle-exclamation';
+    default: return 'fa-solid fa-question';
+  }
+})
+
+// 檢查是否已投票
+function hasVoted(questionId) {
+  return votedQuestions.value.has(questionId)
+}
 
 // 取得會議資訊
 onMounted(async () => {
   roomLink.value = `${window.location.protocol}//${window.location.hostname}:5173/participant?room=${roomCode.value}`
-  await fetchQuestions()
+  
+  // 初始加載數據
+  await Promise.all([
+    fetchQuestions(),
+    fetchRoomStatus(),
+    fetchRoomState()
+  ])
+  
+  // 設置定時輪詢
+  startPolling()
+  
+  // 註冊心跳服務（保持參與者在線狀態）
+  registerHeartbeat()
 })
 
+// 開始數據輪詢
+let questionsPoller, statusPoller, statePoller, heartbeatPoller
+function startPolling() {
+  // 每 5 秒輪詢一次問題列表
+  questionsPoller = setInterval(fetchQuestions, 5000)
+  
+  // 每 3 秒輪詢一次房間狀態
+  statusPoller = setInterval(fetchRoomStatus, 3000)
+  
+  // 每 1 秒輪詢一次房間主題和計時器狀態
+  statePoller = setInterval(fetchRoomState, 1000)
+}
+
+// 清理輪詢器
+onBeforeUnmount(() => {
+  clearInterval(questionsPoller)
+  clearInterval(statusPoller)
+  clearInterval(statePoller)
+  clearInterval(heartbeatPoller)
+})
+
+// 註冊心跳服務
+function registerHeartbeat() {
+  // 生成唯一設備ID
+  const deviceId = localStorage.getItem('device_id') || `device_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
+  localStorage.setItem('device_id', deviceId)
+  
+  // 註冊參與者
+  joinRoom(deviceId)
+  
+  // 設置心跳，每 30 秒發送一次
+  heartbeatPoller = setInterval(() => sendHeartbeat(deviceId), 30000)
+}
+
+// 加入房間
+async function joinRoom(deviceId) {
+  if (!roomCode.value) return
+  
+  try {
+    const nickname = localStorage.getItem('nickname') || `訪客${Math.floor(Math.random() * 10000)}`
+    localStorage.setItem('nickname', nickname)
+    
+    const response = await fetch(`${API_BASE_URL}/api/participants/join`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        room: roomCode.value,
+        device_id: deviceId,
+        nickname: nickname
+      })
+    })
+    
+    if (!response.ok) {
+      console.error('加入房間失敗')
+    }
+  } catch (error) {
+    console.error('加入房間錯誤:', error)
+  }
+}
+
+// 發送心跳
+async function sendHeartbeat(deviceId) {
+  if (!roomCode.value) return
+  
+  try {
+    await fetch(`${API_BASE_URL}/api/participants/heartbeat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        room: roomCode.value,
+        device_id: deviceId
+      })
+    })
+  } catch (error) {
+    console.error('心跳發送錯誤:', error)
+  }
+}
+
+// 獲取房間狀態
+async function fetchRoomStatus() {
+  if (!roomCode.value) return
+  
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/room_status?room=${roomCode.value}`)
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.status}`)
+    }
+    
+    const data = await response.json()
+    roomStatus.value = data.status
+    
+    return data.status
+  } catch (error) {
+    console.error('獲取房間狀態失敗:', error)
+    roomStatus.value = 'NotFound'
+    return 'NotFound'
+  }
+}
+
+// 獲取房間主題和計時器狀態
+async function fetchRoomState() {
+  if (!roomCode.value) return
+  
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/room_state?room=${roomCode.value}`)
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.status}`)
+    }
+    
+    const data = await response.json()
+    currentTopic.value = data.topic || '等待主持人設定主題'
+    remainingTime.value = data.countdown || 0
+    
+    return data
+  } catch (error) {
+    console.error('獲取房間狀態失敗:', error)
+  }
+}
+
+// 獲取問題列表
 async function fetchQuestions() {
   if (!roomCode.value) return
+  
   try {
-    const resp = await fetch(`${API_BASE}/api/questions?room=${roomCode.value}`)
-    const data = await resp.json()
+    const response = await fetch(`${API_BASE_URL}/api/room_comments?room=${roomCode.value}`)
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.status}`)
+    }
+    
+    const data = await response.json()
     questions.value = data.questions || []
-  } catch {
+  } catch (error) {
+    console.error('獲取問題列表失敗:', error)
     questions.value = []
   }
 }
@@ -166,52 +393,119 @@ const copyRoomLink = async () => {
   }
 }
 
-function showNotification(text, type = 'info') {
-  notifications.value.push({ text, type })
-  setTimeout(() => notifications.value.shift(), 4000)
-}
-function removeNotification(i) {
-  notifications.value.splice(i, 1)
-}
+// 使用下方定義的 showNotification 函數
 
 // 提問
+
+// 提交問題
 async function submitQuestion() {
-  if (!canSubmit.value) return
+  if (!newQuestion.value || !roomCode.value) return
+  
+  // 檢查提交頻率限制 (防止垃圾訊息)
+  const lastSubmitTime = localStorage.getItem('lastQuestionSubmitTime')
+  const currentTime = Date.now()
+  
+  if (lastSubmitTime && (currentTime - parseInt(lastSubmitTime)) < 3000) {
+    showNotification('請稍候再提交問題', 'info')
+    return
+  }
+  
   try {
-    const resp = await fetch(`${API_BASE}/api/questions`, {
+    const deviceId = localStorage.getItem('device_id')
+    const nickname = localStorage.getItem('nickname') || '匿名'
+    
+    const response = await fetch(`${API_BASE_URL}/api/room_comment`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ room: roomCode.value, text: newQuestion.value.trim() })
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ 
+        room: roomCode.value, 
+        content: newQuestion.value,
+        nickname: nickname
+      })
     })
-    if (resp.ok) {
-      newQuestion.value = ''
-      await fetchQuestions()
-      showNotification('問題已送出', 'success')
-    } else {
-      showNotification('提問失敗', 'error')
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.status}`)
     }
-  } catch {
-    showNotification('提問失敗', 'error')
+    
+    // 記錄最後提交時間
+    localStorage.setItem('lastQuestionSubmitTime', currentTime.toString())
+    
+    newQuestion.value = ''
+    await fetchQuestions()
+    showNotification('問題已提交', 'success')
+  } catch (error) {
+    console.error('提交問題失敗:', error)
+    showNotification('提交問題失敗，請稍後再試', 'error')
   }
 }
 
-// 投票
-async function voteQuestion(qid) {
+// 投票問題
+async function voteQuestion(questionId) {
+  if (!roomCode.value || !questionId) return
+  
   try {
-    const resp = await fetch(`${API_BASE}/api/questions/vote`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ room: roomCode.value, question_id: qid })
+    const deviceId = localStorage.getItem('device_id') || `device_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
+    localStorage.setItem('device_id', deviceId)
+    
+    // 檢查是否已經投過票
+    const isVoted = hasVoted(questionId)
+    const method = isVoted ? 'DELETE' : 'POST'
+    
+    const response = await fetch(`${API_BASE_URL}/api/questions/vote`, {
+      method: method,
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ 
+        room: roomCode.value, 
+        question_id: questionId,
+        device_id: deviceId
+      })
     })
-    if (resp.ok) {
-      await fetchQuestions()
-      showNotification('已投票', 'success')
-    } else {
-      showNotification('投票失敗', 'error')
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.status}`)
     }
-  } catch {
-    showNotification('投票失敗', 'error')
+    
+    // 更新本地投票狀態
+    if (isVoted) {
+      votedQuestions.value.delete(questionId)
+    } else {
+      votedQuestions.value.add(questionId)
+    }
+    
+    // 更新問題列表
+    await fetchQuestions()
+    
+    showNotification(isVoted ? '已取消投票' : '已投票', 'success')
+  } catch (error) {
+    console.error('投票操作失敗:', error)
+    showNotification('投票操作失敗，請稍後再試', 'error')
   }
+}
+
+// 顯示通知
+
+// 顯示通知
+function showNotification(text, type = 'info') {
+  const notification = { text, type }
+  notifications.value.push(notification)
+  
+  // 3秒後自動移除通知
+  setTimeout(() => {
+    const index = notifications.value.indexOf(notification)
+    if (index !== -1) {
+      notifications.value.splice(index, 1)
+    }
+  }, 3000)
+}
+
+// 移除通知
+function removeNotification(index) {
+  notifications.value.splice(index, 1)
 }
 
 // 時間格式化
@@ -223,252 +517,443 @@ function formatTime(ts) {
     return ''
   }
 }
-
-// html escape
-function escapeHtml(html) {
-  if (!html) return ''
-  return html.replace(/[<>&"]/g, function(c) {
-    return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]
-  })
-}
 </script>
 
 <style scoped>
-/* Navbar */
+@import url('../assets/styles.css');
+@import url('../assets/participant.css');
+
+/* 整體布局 - 覆蓋和擴展共享樣式 */
 .navbar {
-  background: #222e42;
-  color: #fff;
-  padding: 0 0 0 12px;
+  background: var(--background);
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border);
+  padding: 1rem 0;
 }
-.nav-container {
-  max-width: 980px;
-  margin: 0 auto;
+
+/* 其他樣式都在 participant.css 中定義 */
+
+/* 在 styles.css 中定義 */
+
+/* 會議資訊面板 */
+.participant-info-panel {
+  background: var(--secondary-color);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  padding: 22px 20px;
+  color: #eee;
+  margin-bottom: 24px;
+  min-width: 0;
+  transition: all 0.3s ease;
+}
+
+.participant-info-panel:hover {
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+  transform: translateY(-2px);
+}
+
+.info-title {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  height: 62px;
+  gap: 8px;
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin-bottom: 16px;
+  color: #e2e8f0;
+  border-bottom: 1px solid #3b4253;
+  padding-bottom: 10px;
 }
-.nav-brand h1 {
-  font-size: 1.32em;
-  letter-spacing: 2px;
-  font-weight: bold;
-  margin-right: 14px;
-}
-.nav-brand span {
-  font-size: 1em;
+
+.info-title i {
   color: #7db2ff;
-  margin-left: 6px;
 }
-.room-info {
-  color: #b6c6e6;
-  font-size: 1.08em;
-  margin-right: 18px;
-}
-.participant-content {
-  background: #191c21;
-  min-height: calc(100vh - 62px);
-  padding: 32px 0;
-}
-.participant-layout {
-  max-width: 940px;
-  margin: 0 auto;
-  display: grid;
-  grid-template-columns: 1.1fr 1fr 1.7fr;
-  gap: 26px;
-}
-@media (max-width: 950px) {
-  .participant-layout {
-    grid-template-columns: 1fr;
-    gap: 18px;
-  }
-}
-/* info panel */
-.participant-info-panel {
-  background: #262c38;
-  border-radius: 11px;
-  padding: 22px 20px 18px 20px;
-  color: #eee;
-  margin-bottom: 8px;
-  min-width: 0;
-}
+
 .info-row {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
 }
+
 .code-qrcode-row {
   display: flex;
   align-items: flex-start;
-  gap: 17px;
+  gap: 20px;
+  flex-wrap: wrap;
 }
+
 .code-col {
   flex: 1.5 1 0;
-  min-width: 95px;
+  min-width: 180px;
 }
+
 .qrcode-col {
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   align-items: center;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 12px;
 }
+
 .qrcode-caption {
   font-size: 0.93em;
   color: #aaa;
-  margin-top: 4px;
+  margin-top: 8px;
 }
+
 .link-row {
-  margin-top: 6px;
+  margin-top: 16px;
   flex: 1 1 100%;
 }
+
 .info-label {
   font-size: 0.97em;
   color: #9ca7be;
+  margin-bottom: 6px;
 }
+
 .code-display {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 2px;
+  margin-top: 4px;
 }
+
 .code-text, .link-text {
   font-family: 'Fira Mono', 'Consolas', monospace;
   font-size: 1.07em;
   background: #18191b;
   color: #3c91f6;
-  border-radius: 6px;
-  padding: 2px 8px;
+  border-radius: 8px;
+  padding: 6px 12px;
   letter-spacing: 1.2px;
-  max-width: 180px;
   overflow: auto;
+  max-width: 100%;
 }
+
+.link-text {
+  width: 100%;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
 .btn-icon {
-  background: #25272c;
-  color: #e1e3ea;
+  background: #2d3748;
+  color: #e2e8f0;
   border: none;
-  border-radius: 5px;
+  border-radius: 6px;
   font-size: 1em;
-  padding: 4px 8px;
+  padding: 6px 10px;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: all 0.2s ease;
 }
+
 .btn-icon:hover {
-  background: #353944;
+  background: #3a4a63;
+  transform: translateY(-2px);
 }
+
+.topic-panel {
+  background: var(--secondary-color);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  padding: 22px 20px;
+  color: #eee;
+  margin-bottom: 16px;
+  transition: all 0.3s ease;
+}
+
+.topic-panel:hover {
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+  transform: translateY(-2px);
+}
+
+.current-topic {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  padding: 14px 18px;
+  border-left: 4px solid #7db2ff;
+  font-size: 1.2rem;
+  line-height: 1.5;
+  color: #e2e8f0;
+  margin-top: 10px;
+}
+
+.topic-container {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  padding: 12px 16px;
+  border-left: 4px solid #7db2ff;
+}
+
+.topic-label {
+  color: #9ca7be;
+  margin-bottom: 6px;
+}
+
 /* 提問區 */
 .question-submit-panel {
-  background: #242a33;
-  border-radius: 11px;
-  padding: 20px 20px 14px 20px;
+  background: var(--secondary-color);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  padding: 22px 20px;
   color: #eee;
+  margin-bottom: 24px;
+  transition: all 0.3s ease;
 }
+
+.question-submit-panel:hover {
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+  transform: translateY(-2px);
+}
+
 .question-submit-panel form {
   display: flex;
-  gap: 10px;
-  margin-top: 12px;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
 }
+
 .question-submit-panel input {
-  flex: 1;
-  border-radius: 5px;
-  padding: 6px 10px;
-  border: 1px solid #2c3340;
-  background: #22262b;
+  border-radius: 8px;
+  padding: 10px 14px;
+  border: 1px solid #3b4253;
+  background: #1e222a;
   color: #fff;
   font-size: 1em;
+  transition: all 0.2s ease;
 }
+
+.question-submit-panel input:focus {
+  border-color: #7db2ff;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(125, 178, 255, 0.2);
+}
+
 .btn.btn-primary {
-  background: #2d8cf0;
+  background: linear-gradient(135deg, #3c91f6, #2d8cf0);
   color: #fff;
   border: none;
-  border-radius: 6px;
-  padding: 0.4em 1.15em;
+  border-radius: 8px;
+  padding: 10px 16px;
   font-size: 1em;
+  font-weight: 500;
   cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
 }
+
+.btn.btn-primary:hover {
+  background: linear-gradient(135deg, #4b9ef8, #3a96f3);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(45, 140, 240, 0.3);
+}
+
 .btn.btn-primary:disabled {
-  background: #628bba;
+  background: #4a5568;
   cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
 }
+
 /* 問題列表 */
 .questions-panel {
-  background: #23272e;
-  border-radius: 11px;
-  padding: 20px 18px 13px 18px;
+  background: var(--secondary-color);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  padding: 22px 20px;
   color: #eee;
   min-width: 0;
+  grid-column: 1 / -1;
+  max-height: 600px;
+  overflow-y: auto;
+  transition: all 0.3s ease;
 }
+
+.questions-panel:hover {
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+}
+
+.question-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
 .question-item {
-  border-bottom: 1px solid #31354a;
-  padding: 8px 0 7px 0;
+  border: 1px solid #31354a;
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: #292f3a;
+  transition: all 0.2s ease;
 }
-.question-item:last-child {
-  border-bottom: none;
+
+.question-item:hover {
+  background: #2f3642;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
+
 .question-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 8px;
 }
+
 .question-votes {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vote-button {
+  background: #2d3748;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #a0aec0;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.vote-button:hover {
+  background: #3a4a63;
+}
+
+.vote-button.voted {
+  background: rgba(60, 145, 246, 0.2);
+  color: #3c91f6;
+}
+
+.vote-icon {
+  font-size: 1.1em;
+}
+
+.vote-count {
+  font-weight: 500;
+}
+
+.answered-tag {
+  background: rgba(25, 201, 114, 0.2);
+  color: #19c972;
+  font-size: 0.91em;
+  border-radius: 4px;
+  padding: 3px 8px;
+  margin-right: 7px;
   display: flex;
   align-items: center;
   gap: 4px;
 }
-.answered-tag {
-  background: #19c972;
-  color: #fff;
-  font-size: 0.91em;
-  border-radius: 4px;
-  padding: 1px 6px;
-  margin-right: 7px;
+
+.question-content {
+  margin: 8px 0;
+  line-height: 1.5;
+  word-break: break-word;
 }
+
 .question-meta {
-  font-size: 0.97em;
+  font-size: 0.92em;
   color: #8fa2b3;
-  margin-top: 2px;
+  margin-top: 8px;
   display: flex;
-  gap: 13px;
+  gap: 16px;
 }
+
+.meta-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.meta-icon {
+  color: #a0aec0;
+}
+
 .empty-state {
   text-align: center;
   color: #a3b3c2;
-  margin-top: 24px;
+  margin: 40px 0;
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 10px;
 }
+
 .empty-icon {
-  font-size: 2.4em;
-  margin-bottom: 5px;
+  font-size: 2.8em;
+  margin-bottom: 12px;
+  color: #4a5568;
 }
-/* 通知 */
-.notification {
-  display: flex;
-  align-items: center;
-  background: #222e42;
-  color: #fff;
-  border-radius: 8px;
-  padding: 12px 18px;
-  box-shadow: 0 2px 16px rgba(40,40,60,0.20);
+
+.empty-text {
   font-size: 1.05em;
-  margin-bottom: 10px;
-  min-width: 180px;
-  max-width: 350px;
-  word-break: break-all;
-  gap: 10px;
+  max-width: 280px;
+  margin: 0 auto;
+  line-height: 1.5;
 }
-.notification-success {
-  background: #2d8f2d;
+
+/* 通知動畫 */
+@keyframes slideIn {
+  from {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
-.notification-error {
-  background: #c03b38;
+
+/* 響應式設計 */
+@media (max-width: 768px) {
+  .nav-actions {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  
+  .question-list {
+    grid-template-columns: 1fr;
+  }
+  
+  .status-indicator {
+    font-size: 0.9rem;
+    padding: 4px 8px;
+  }
+  
+  .timer {
+    font-size: 1.1rem;
+  }
 }
-.notification-info {
-  background: #224270;
-}
-.notification button {
-  background: transparent;
-  border: none;
-  color: #fff;
-  font-size: 1.15em;
-  cursor: pointer;
-  margin-left: 12px;
-  line-height: 1;
+
+@media (max-width: 480px) {
+  .participant-content {
+    padding: 16px 12px;
+  }
+  
+  .nav-container {
+    padding: 0 12px;
+    flex-direction: column;
+    height: auto;
+    padding: 10px;
+  }
+  
+  .nav-brand {
+    margin-bottom: 10px;
+  }
+  
+  .nav-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+  
+  .topic-questions-container {
+    gap: 16px;
+  }
 }
 </style>

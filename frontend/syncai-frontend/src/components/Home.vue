@@ -74,28 +74,120 @@
 
     <!-- 加入會議室 Modal -->
     <div class="modal" :class="{ active: showJoinModal }" @click.self="closeModal">
-      <div class="modal-content">
+      <div class="modal-content modal-large">
         <div class="modal-header">
           <h3>加入會議室</h3>
           <button class="modal-close" @click="closeModal">&times;</button>
         </div>
-        <form class="modal-form" @submit.prevent="joinRoom">
-          <div class="form-group">
-            <label for="roomCode">會議室代碼</label>
-            <input
-              type="text"
-              id="roomCode"
-              v-model="joinCode"
-              required
-              placeholder="輸入 6 位數代碼"
-              maxlength="6"
-            />
+        
+        <!-- 會議室列表 -->
+        <div class="room-list-container">
+          <!-- 狀態篩選器 -->
+          <div class="filter-section">
+            <label>篩選會議室狀態：</label>
+            <div class="filter-buttons">
+              <button 
+                type="button" 
+                :class="['filter-btn', { active: selectedFilter === 'all' }]"
+                @click="selectedFilter = 'all'"
+              >
+                全部
+              </button>
+              <button 
+                type="button" 
+                :class="['filter-btn', { active: selectedFilter === 'Stop' }]"
+                @click="selectedFilter = 'Stop'"
+              >
+                休息中
+              </button>
+              <button 
+                type="button" 
+                :class="['filter-btn', { active: selectedFilter === 'Discussion' }]"
+                @click="selectedFilter = 'Discussion'"
+              >
+                討論中
+              </button>
+              <button 
+                type="button" 
+                :class="['filter-btn', { active: selectedFilter === 'End' }]"
+                @click="selectedFilter = 'End'"
+              >
+                已結束
+              </button>
+            </div>
           </div>
-          <div class="form-actions">
-            <button type="button" class="btn btn-outline" @click="closeModal">取消</button>
-            <button type="submit" class="btn btn-primary">加入會議室</button>
+
+          <!-- 會議室列表 -->
+          <div class="room-list">
+            <div class="room-list-header">
+              <span>會議室標題</span>
+              <span>主持人</span>
+              <span>狀態</span>
+              <span>建立時間</span>
+            </div>
+            <div 
+              v-for="room in filteredRooms" 
+              :key="room.code"
+              class="room-item-container"
+            >
+              <div 
+                class="room-item"
+                :class="{ 'selected': selectedRoom?.code === room.code }"
+                @click="selectRoom(room)"
+              >
+                <span class="room-title">{{ room.title }}</span>
+                <span class="room-host">{{ room.host }}</span>
+                <span :class="['room-status', `status-${room.status}`]">
+                  {{ getStatusText(room.status) }}
+                </span>
+                <span class="room-time">{{ formatTime(room.created_at) }}</span>
+              </div>
+              
+              <!-- 展開的輸入代碼表單 -->
+              <div 
+                v-if="selectedRoom?.code === room.code" 
+                class="room-join-form"
+              >
+                <div class="join-form-content">
+                  <h4>
+                    <i class="fas fa-sign-in-alt"></i>
+                    加入會議室：{{ selectedRoom.title }}
+                  </h4>
+                  <form @submit.prevent="joinSelectedRoom" class="inline-join-form">
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label for="roomCode">請輸入會議室代碼確認加入</label>
+                        <input
+                          type="text"
+                          id="roomCode"
+                          v-model="joinCode"
+                          required
+                          placeholder="輸入 6 位數代碼"
+                          maxlength="6"
+                          class="join-input"
+                          ref="joinCodeInput"
+                        />
+                      </div>
+                      <div class="form-actions">
+                        <button type="button" class="btn btn-outline btn-sm" @click="selectedRoom = null">
+                          <i class="fas fa-times"></i>
+                          取消
+                        </button>
+                        <button type="submit" class="btn btn-primary btn-sm">
+                          <i class="fas fa-sign-in-alt"></i>
+                          確認加入
+                        </button>
+                      </div>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+            <div v-if="filteredRooms.length === 0" class="no-rooms">
+              沒有找到符合條件的會議室
+            </div>
           </div>
-        </form>
+        </div>
       </div>
     </div>
 
@@ -115,7 +207,7 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
@@ -131,21 +223,72 @@ const showJoinModal = ref(false)
 const createForm = reactive({ title: '', host: '' })
 const joinCode = ref('')
 
+// --- 會議室列表相關 ---
+const rooms = ref([])
+const selectedFilter = ref('all')
+const selectedRoom = ref(null)
+
 // --- 通知 ---
 const notifications = ref([])
 
+// --- 計算過濾後的會議室 ---
+const filteredRooms = computed(() => {
+  if (selectedFilter.value === 'all') {
+    return rooms.value
+  }
+  return rooms.value.filter(room => room.status === selectedFilter.value)
+})
+
 // --- Modal 開關 ---
-function openModal(type) {
-  if (type === 'create') showCreateModal.value = true
-  if (type === 'join') showJoinModal.value = true
-  setTimeout(() => {
-    if (type === 'create') document.getElementById('roomTitle')?.focus()
-    if (type === 'join') document.getElementById('roomCode')?.focus()
-  }, 200)
+async function openModal(type) {
+  if (type === 'create') {
+    showCreateModal.value = true
+    setTimeout(() => document.getElementById('roomTitle')?.focus(), 200)
+  }
+  if (type === 'join') {
+    await loadRooms() // 載入會議室列表
+    showJoinModal.value = true
+  }
 }
+
 function closeModal() {
   showCreateModal.value = false
   showJoinModal.value = false
+  selectedRoom.value = null
+  joinCode.value = ''
+}
+
+// --- 載入會議室列表 ---
+async function loadRooms() {
+  try {
+    const resp = await fetch(`${API_BASE}/api/rooms`)
+    if (!resp.ok) throw new Error('無法載入會議室列表')
+    const data = await resp.json()
+    rooms.value = data.rooms || []
+  } catch (err) {
+    showNotification('載入會議室列表失敗', 'error')
+  }
+}
+
+// --- 選擇會議室 ---
+function selectRoom(room) {
+  // 如果點擊的是已選中的會議室，則取消選擇
+  if (selectedRoom.value?.code === room.code) {
+    selectedRoom.value = null
+    joinCode.value = ''
+    return
+  }
+  
+  selectedRoom.value = room
+  joinCode.value = ''
+  
+  // 在下一個 DOM 更新後聚焦到輸入框
+  setTimeout(() => {
+    const input = document.getElementById('roomCode')
+    if (input) {
+      input.focus()
+    }
+  }, 100)
 }
 
 // --- 建立會議室 ---
@@ -155,7 +298,7 @@ async function createRoom() {
     return
   }
   try {
-    const resp = await fetch(`${API_BASE}/api/rooms`, {
+    const resp = await fetch(`${API_BASE}/api/create_room`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -178,26 +321,35 @@ async function createRoom() {
 }
 
 // --- 加入會議室 ---
-async function joinRoom() {
+async function joinSelectedRoom() {
   const code = joinCode.value.trim().toUpperCase()
+  
+  // 驗證代碼是否與選擇的會議室匹配
+  if (code !== selectedRoom.value.code) {
+    showNotification('輸入的代碼與選擇的會議室不符', 'error')
+    return
+  }
+  
   if (!code || code.length !== 6) {
     showNotification('請輸入有效的 6 位數會議室代碼', 'error')
     return
   }
+  
   try {
-    const resp = await fetch(`${API_BASE}/api/rooms`)
-    const rooms = await resp.json()
-    const room = rooms.find(r => r.code === code)
-    if (!room) {
+    const resp = await fetch(`${API_BASE}/api/room_status?room=${code}`)
+    const data = await resp.json()
+    const room_status = data["status"]
+
+    console.log("Room status:", room_status)
+    if (room_status === "NotFound") {
       showNotification('找不到該會議室，請檢查代碼是否正確', 'error')
       return
     }
-    if (!room.is_active) {
+    if (room_status === "End") {
       showNotification('該會議室已結束', 'error')
       return
     }
     closeModal()
-    joinCode.value = ''
     showNotification('正在加入會議室...', 'success')
     setTimeout(() => {
       router.push(`/participant?room=${code}`)
@@ -205,6 +357,29 @@ async function joinRoom() {
   } catch (e) {
     showNotification('加入會議室失敗，請稍後再試', 'error')
   }
+}
+
+// --- 格式化時間 ---
+function formatTime(timeString) {
+  const date = new Date(timeString)
+  return date.toLocaleString('zh-TW', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+// --- 獲取狀態文字 ---
+function getStatusText(status) {
+  const statusMap = {
+    'Stop': '休息中',
+    'Discussion': '討論中',
+    'End': '已結束',
+    'NotFound': '未找到'
+  }
+  return statusMap[status] || status
 }
 
 // --- 通知 ---
@@ -219,10 +394,352 @@ function removeNotification(i) {
 
 <style scoped>
 @import url('../assets/styles.css');
+
 .fade-enter-active, .fade-leave-active {
   transition: opacity .3s;
 }
 .fade-enter-from, .fade-leave-to {
   opacity: 0;
+}
+
+/* 大型 Modal - 使用更高優先級 */
+.modal-content.modal-large {
+  max-width: 900px !important;
+  max-height: 85vh;
+  overflow-y: auto;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+  border: none;
+}
+
+/* 會議室列表容器 */
+.room-list-container {
+  margin: 0 20px 20px 20px;
+  padding: 0 10px;
+}
+
+/* 篩選器區域 */
+.filter-section {
+  margin-bottom: 25px;
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+}
+
+.filter-section label {
+  display: block;
+  margin-bottom: 15px;
+  font-weight: 600;
+  color: #495057;
+  text-align: center;
+  font-size: 16px;
+}
+
+.filter-buttons {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.filter-btn {
+  padding: 12px 20px;
+  border: 2px solid #dee2e6;
+  background: white;
+  color: #6c757d;
+  border-radius: 25px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.filter-btn:hover {
+  border-color: #007bff;
+  color: #007bff;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0,123,255,0.2);
+}
+
+.filter-btn.active {
+  background: linear-gradient(135deg, #007bff, #0056b3);
+  border-color: #007bff;
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0,123,255,0.3);
+}
+
+/* 會議室列表 */
+.room-list {
+  border: 1px solid #dee2e6;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
+  background: white;
+  margin: 0 10px;
+}
+
+.room-item-container {
+  border-bottom: 1px solid #f1f3f4;
+}
+
+.room-item-container:last-child {
+  border-bottom: none;
+}
+
+.room-list-header {
+  display: grid;
+  grid-template-columns: 2.5fr 1.5fr 1fr 1.5fr;
+  gap: 20px;
+  padding: 20px 25px;
+  background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+  font-weight: 700;
+  color: #495057;
+  border-bottom: 2px solid #dee2e6;
+  text-align: center;
+}
+
+.room-list-header span:first-child {
+  text-align: left;
+}
+
+.room-item {
+  display: grid;
+  grid-template-columns: 2.5fr 1.5fr 1fr 1.5fr;
+  gap: 20px;
+  padding: 20px 25px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  align-items: center;
+}
+
+.room-item:hover {
+  background: linear-gradient(135deg, #f8f9fa, #ffffff);
+  transform: translateX(5px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.room-item.selected {
+  background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+  border-left: 4px solid #2196f3;
+}
+
+/* 內嵌加入表單 */
+.room-join-form {
+  background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+  border-top: 1px solid #dee2e6;
+  animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+  from {
+    max-height: 0;
+    opacity: 0;
+  }
+  to {
+    max-height: 200px;
+    opacity: 1;
+  }
+}
+
+.join-form-content {
+  padding: 20px 25px;
+}
+
+.join-form-content h4 {
+  margin-bottom: 15px;
+  color: #495057;
+  font-weight: 600;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.join-form-content h4 i {
+  color: #2196f3;
+}
+
+.inline-join-form {
+  margin: 0;
+}
+
+.form-row {
+  display: flex;
+  align-items: end;
+  gap: 15px;
+}
+
+.form-row .form-group {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.form-row .form-group label {
+  font-size: 14px;
+  margin-bottom: 8px;
+  color: #6c757d;
+}
+
+.join-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 2px solid #dee2e6;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: all 0.2s;
+  background: white;
+}
+
+.join-input:focus {
+  outline: none;
+  border-color: #2196f3;
+  box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.1);
+}
+
+.form-row .form-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 0;
+}
+
+.btn-sm {
+  padding: 8px 16px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-sm i {
+  font-size: 12px;
+}
+
+.room-title {
+  font-weight: 600;
+  color: #212529;
+  text-align: left;
+  font-size: 16px;
+}
+
+.room-host {
+  color: #6c757d;
+  text-align: center;
+  font-weight: 500;
+}
+
+.room-status {
+  display: inline-block;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  min-width: 80px;
+  margin: 0 auto;
+}
+
+.status-Stop {
+  background: linear-gradient(135deg, #fff3cd, #ffeaa7);
+  color: #856404;
+  border: 1px solid #ffeaa7;
+}
+
+.status-Discussion {
+  background: linear-gradient(135deg, #d1ecf1, #74b9ff);
+  color: #0c5460;
+  border: 1px solid #74b9ff;
+}
+
+.status-End {
+  background: linear-gradient(135deg, #f8d7da, #fd79a8);
+  color: #721c24;
+  border: 1px solid #fd79a8;
+}
+
+.room-time {
+  color: #6c757d;
+  font-size: 14px;
+  text-align: center;
+  font-weight: 500;
+}
+
+.no-rooms {
+  padding: 60px 40px;
+  text-align: center;
+  color: #6c757d;
+  font-style: italic;
+  font-size: 16px;
+  background: linear-gradient(135deg, #f8f9fa, #ffffff);
+}
+
+/* 響應式設計 */
+@media (max-width: 768px) {
+  .modal-content.modal-large {
+    max-width: 95% !important;
+    margin: 20px auto;
+  }
+  
+  .room-list-container {
+    margin: 0 10px 20px 10px;
+    padding: 0 5px;
+  }
+  
+  .room-list {
+    margin: 0 5px;
+  }
+  
+  .room-list-header,
+  .room-item {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    padding: 15px 20px;
+    text-align: center;
+  }
+  
+  .room-list-header span,
+  .room-item span {
+    padding: 8px 0;
+    border-bottom: 1px solid #f1f3f4;
+  }
+  
+  .room-list-header span:last-child,
+  .room-item span:last-child {
+    border-bottom: none;
+  }
+  
+  .room-title {
+    text-align: center !important;
+    font-size: 15px;
+  }
+  
+  .filter-buttons {
+    justify-content: center;
+    gap: 8px;
+  }
+  
+  .filter-btn {
+    padding: 10px 16px;
+    font-size: 13px;
+  }
+  
+  /* 手機版內嵌表單 */
+  .form-row {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+  
+  .form-row .form-actions {
+    justify-content: center;
+  }
+  
+  .join-form-content {
+    padding: 15px 20px;
+  }
 }
 </style>

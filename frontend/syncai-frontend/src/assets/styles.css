@@ -334,15 +334,27 @@ body {
   align-items: center;
   background: #222e42;
   color: #fff;
-  border-radius: 8px;
-  padding: 12px 18px;
-  box-shadow: 0 2px 16px rgba(40,40,60,0.20);
+  border-radius: 10px;
+  padding: 14px 18px;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
   font-size: 1.05em;
   margin-bottom: 10px;
   min-width: 180px;
   max-width: 350px;
   word-break: break-all;
   gap: 10px;
+  animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 .notification-success {
   background: #2d8f2d;
@@ -354,11 +366,78 @@ body {
   background: #224270;
 }
 .notification button {
-  background: transparent;
+  background: rgba(255, 255, 255, 0.1);
   border: none;
+  border-radius: 50%;
   color: #fff;
-  font-size: 1.15em;
+  font-size: 1rem;
   cursor: pointer;
-  margin-left: 12px;
-  line-height: 1;
+  margin-left: auto;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.notification button:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* 狀態指示器 */
+.status-indicator {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  gap: 6px;
+}
+
+.status-icon {
+  font-size: 1.1em;
+}
+
+.status-discussion {
+  background-color: rgba(25, 201, 114, 0.15);
+  color: #19c972;
+}
+
+.status-stop {
+  background-color: rgba(240, 71, 71, 0.15);
+  color: #f04747;
+}
+
+.status-end {
+  background-color: rgba(140, 140, 140, 0.15);
+  color: #aaaaaa;
+}
+
+.status-notfound {
+  background-color: rgba(255, 184, 0, 0.15);
+  color: #ffb800;
+}
+
+.timer-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.timer-label {
+  font-size: 0.95rem;
+  color: #a0aec0;
+}
+
+.timer {
+  font-size: 1.3rem;
+  font-weight: 700;
+  font-family: 'Roboto Mono', monospace;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 4px 12px;
+  border-radius: 6px;
+  color: #e2e8f0;
+  letter-spacing: 1px;
 }

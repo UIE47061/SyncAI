@@ -11,6 +11,9 @@
           <div class="room-info">
             <span class="room-code">會議代碼: <strong>{{ roomCode || '------' }}</strong></span>
             <span class="participant-count">參與人數: <strong>{{ room?.participants ?? 0 }}</strong></span>
+            <span class="room-status" :class="'status-' + roomStatus.toLowerCase()">
+              狀態: <strong>{{ roomStatusText }}</strong>
+            </span>
           </div>
           <button class="btn btn-outline" @click="endRoom">結束會議</button>
         </div>
@@ -148,8 +151,9 @@
             </div>
           </div>
           <div class="control-section">
-            <h3>會議連結</h3>
+            <h3>分享會議室</h3>
             <div class="share-item">
+                  <span>會議連結</span>
                   <div class="code-display">
                     <span>{{ roomLink }}</span>
                     <button class="btn-icon" @click="copyRoomLink" title="複製連結">
@@ -298,10 +302,14 @@
 import { ref, reactive, computed, onMounted, watch, onBeforeUnmount } from 'vue'
 import QrcodeVue from 'qrcode.vue'
 
+// API 基礎 URL 設定
+const API_BASE_URL = 'http://localhost:8000' // 根據實際後端服務的地址和端口進行調整
+
 // 狀態
 const room = ref(null)
 const roomCode = ref('')
 const questions = ref([])
+const roomStatus = ref('NotFound') // 房間狀態：NotFound, Stop, Discussion
 const settings = reactive({ allowQuestions: true, allowVoting: true })
 const sortBy = ref('votes')
 const notifications = ref([])
@@ -335,6 +343,17 @@ const totalVotes = computed(() => questions.value.reduce((sum, q) => sum + (q.vo
 // 分享連結
 const roomLink = computed(() => {
   return `${window.location.origin}/participant?room=${roomCode.value || ''}`
+})
+
+// 房間狀態顯示文字
+const roomStatusText = computed(() => {
+  switch(roomStatus.value) {
+    case 'NotFound': return '未啟動';
+    case 'Stop': return '休息中';
+    case 'Discussion': return '討論中';
+    case 'End': return '已結束';
+    default: return '未知';
+  }
 })
 
 // participantUrl.value = `${window.location.protocol}//${window.location.hostname}:5173/participant?room=${roomCode.value}`
@@ -425,13 +444,30 @@ function clearAllQuestions() {
 }
 
 // 會議控制
-function endRoom() {
-  if (confirm('確定要結束會議嗎？參與者將無法繼續提問和投票。')) {
-    room.value.isActive = false
-    room.value.endedAt = new Date().toISOString()
-    saveRoom()
-    showNotification('會議已結束', 'success')
-    setTimeout(() => { window.location.href = 'index.html' }, 2000)
+async function endRoom() {
+  if (confirm('確定要結束會議嗎？這將關閉房間並退出。')) {
+    try {
+      // 停止計時器 (如果有運行的話)
+      if (timerRunning.value) {
+        await stopTimer()
+      }
+      
+      // 更新API狀態為 End
+      await setRoomStatus('End')
+      
+      // 更新本地房間狀態（如果存在）
+      if (room.value) {
+        room.value.isActive = false
+        room.value.endedAt = new Date().toISOString()
+        saveRoom()
+      }
+      
+      showNotification('會議已結束，房間已關閉', 'success')
+      setTimeout(() => {window.location.href = window.location.origin;}, 2000)
+    } catch (error) {
+      console.error('結束會議失敗:', error)
+      showNotification('結束會議失敗，請稍後再試', 'error')
+    }
   }
 }
 
@@ -528,6 +564,11 @@ function toggleSidebar() {
 
 function selectTopic(index) {
   selectedTopicIndex.value = index
+  
+  // 如果計時器已經運行，切換主題時也更新到參與者面板
+  if (timerRunning.value) {
+    setRoomState()
+  }
 }
 
 function startEditTopic(index) {
@@ -641,7 +682,7 @@ function setPresetTime(minutes) {
   timerSettings.seconds = 0
 }
 
-function applyTimerSettings() {
+async function applyTimerSettings() {
   // 計算總秒數
   const totalSeconds = 
     (timerSettings.hours * 3600) + 
@@ -658,13 +699,14 @@ function applyTimerSettings() {
   // 關閉設定彈窗
   hideTimerSettings()
   
-  // 如果時間已設置，自動開始計時
+  // 如果時間已設置，與API同步並自動開始計時
   if (totalSeconds > 0) {
-    startTimer()
+    setRoomState()
+    startTimer() // 自動開始計時
   }
 }
 
-function startTimer() {
+async function startTimer() {
   if (remainingTime.value <= 0) return
   
   timerRunning.value = true
@@ -674,27 +716,45 @@ function startTimer() {
     clearInterval(timerInterval.value)
   }
   
-  // 設置新計時器
+  // 更新房間狀態為討論中
+  await setRoomStatus('Discussion')
+  
+  // 記錄計時器開始時間
+  const startTime = Date.now()
+  const initialSeconds = remainingTime.value
+  
+  // 設置新計時器，使用基於時間差的方式計算，而不是簡單地減1
   timerInterval.value = setInterval(() => {
-    if (remainingTime.value > 0) {
-      remainingTime.value--
+    const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000)
+    const newRemaining = initialSeconds - elapsedSeconds
+    
+    if (newRemaining > 0) {
+      remainingTime.value = newRemaining
     } else {
+      remainingTime.value = 0
       stopTimer()
       // 計時結束時發出通知
       showNotification('計時器時間到！', 'info')
     }
-  }, 1000)
+  }, 500) // 更頻繁檢查但只在必要時更新視圖
 }
 
-function stopTimer() {
+async function stopTimer() {
   timerRunning.value = false
   if (timerInterval.value) {
     clearInterval(timerInterval.value)
     timerInterval.value = null
   }
+  
+  // 更新房間狀態為暫停
+  try {
+    await setRoomStatus('Stop')
+  } catch (error) {
+    console.error('停止計時器時更新狀態失敗:', error)
+  }
 }
 
-function toggleTimer() {
+async function toggleTimer() {
   if (remainingTime.value <= 0) {
     // 如果沒有設置時間，開啟設置面板
     showTimerSettings()
@@ -702,15 +762,19 @@ function toggleTimer() {
   }
   
   if (timerRunning.value) {
-    stopTimer()
+    await stopTimer()
+    // stopTimer 已經會設置房間狀態為 Stop
   } else {
-    startTimer()
+    await startTimer()
+    // startTimer 已經會設置房間狀態為 Discussion
+    // 同步當前主題和計時狀態到參與者面板
+    await setRoomState()
   }
 }
 
-function terminateTimer() {
-  // 停止計時器
-  stopTimer()
+async function terminateTimer() {
+  // 停止計時器 (內部已經會設置狀態為 Stop)
+  await stopTimer()
   // 將剩餘時間設為0（時間到）
   remainingTime.value = 0
   // 顯示時間到的通知
@@ -782,24 +846,117 @@ function saveTimerState() {
 // 監聽計時器狀態變化
 watch([timerRunning, remainingTime], saveTimerState)
 
-let poller
+// 房間狀態相關API函數
+async function fetchRoomStatus() {
+  try {
+    // 如果計時器正在運行，不需要頻繁查詢房間狀態
+    if (timerRunning.value && roomStatus.value === 'Discussion') {
+      return roomStatus.value
+    }
+    
+    const response = await fetch(`${API_BASE_URL}/api/room_status?room=${roomCode.value}`)
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.status}`)
+    }
+    const data = await response.json()
+    const status = data.status
+    // 只在狀態變化時更新
+    if (roomStatus.value !== status) {
+      roomStatus.value = status
+      console.log(`房間狀態已更新：${status}`) // 便於調試
+    }
+    
+    return status
+  } catch (error) {
+    console.error('獲取房間狀態失敗:', error)
+    roomStatus.value = 'NotFound'
+    return 'NotFound'
+  }
+}
+
+async function setRoomStatus(status) {
+  try {
+    // 如果狀態沒有變化，不做任何事情
+    if (roomStatus.value === status) {
+      return
+    }
+    
+    const response = await fetch(`${API_BASE_URL}/api/room_status`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        room: roomCode.value,
+        status: status
+      })
+    })
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.status}`)
+    }
+    roomStatus.value = status
+    showNotification(`房間狀態已更新為：${roomStatusText.value}`, 'success')
+  } catch (error) {
+    console.error('設置房間狀態失敗:', error)
+    showNotification('設置房間狀態失敗', 'error')
+  }
+}
+
+// 主題和計時相關的API函數
+async function setRoomState() {
+  if (!topics.value[selectedTopicIndex.value]) {
+    return
+  }
+  
+  const currentTopic = topics.value[selectedTopicIndex.value].title
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/room_state`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        room: roomCode.value,
+        topic: currentTopic,
+        countdown: initialTime.value,
+        time_start: Date.now() / 1000
+      })
+    })
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.status}`)
+    }
+    
+    // 若成功設置狀態，則自動將房間狀態改為 Discussion
+    await setRoomStatus('Discussion')
+    
+    showNotification('主題和計時器已同步到參與者面板', 'success')
+  } catch (error) {
+    console.error('設置房間狀態失敗:', error)
+    showNotification('設置房間狀態失敗', 'error')
+  }
+}
+
+let roomPoller
+let dataPoller
 onMounted(() => {
   loadRoom()
   loadTopics()
   loadTimerSettings() // 載入計時器設置
-  
-  poller = setInterval(() => {
-    loadRoom()
-  }, 3000)
-  
+    
   // 添加窗口大小變化的監聽器
   window.addEventListener('resize', updateQRCodeSize)
+  
+  // 初始化獲取房間狀態
+  fetchRoomStatus()
 })
 
 onBeforeUnmount(() => {
   // 組件卸載時清理
   window.removeEventListener('resize', updateQRCodeSize)
-  clearInterval(poller)
+  clearInterval(dataPoller)
+  clearInterval(roomPoller)
   
   // 停止計時器
   if (timerInterval.value) {
@@ -1230,6 +1387,36 @@ onBeforeUnmount(() => {
   font-size: 0.9rem;
   color: var(--text-secondary);
   word-break: break-all;
+}
+
+/* 房間狀態樣式 */
+.room-status {
+  margin-left: 1rem;
+  padding: 4px 12px;
+  border-radius: 50px;
+  font-size: 0.9rem;
+  background-color: #f0f0f0;
+}
+
+.status-notfound {
+  background-color: #e5e5e5;
+  color: #666666;
+}
+
+.status-stop {
+  background-color: #fef3c7;
+  color: #b45309;
+}
+
+.status-discussion {
+  background-color: #dcfce7;
+  color: #166534;
+}
+
+.status-end {
+  background-color: #f3f4f6;
+  color: #374151;
+  border: 1px solid #d1d5db;
 }
 
 @keyframes fadeIn {

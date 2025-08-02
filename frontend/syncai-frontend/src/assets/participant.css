@@ -1,24 +1,26 @@
-.participant-content {
-    max-width: 800px;
-    margin: 0 auto;
-    padding: 2rem 1rem;
-}
-
 .participant-layout {
+    max-width: 1080px;
+    margin: 0 auto;
     display: flex;
     flex-direction: column;
-    gap: 2rem;
+    gap: 24px;
 }
 
 .nav-actions {
     display: flex;
     align-items: center;
-    gap: 1rem;
+    gap: 16px;
+}
+
+.topic-questions-container {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
 }
 
 .room-info {
-    font-size: 0.875rem;
-    color: var(--text-secondary);
+    color: #b6c6e6;
+    font-size: 1.08em;
 }
 
 .room-info strong {
