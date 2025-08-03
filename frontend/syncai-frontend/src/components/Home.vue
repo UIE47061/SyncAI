@@ -361,7 +361,7 @@ async function joinSelectedRoom() {
 
 // --- 格式化時間 ---
 function formatTime(timeString) {
-  const date = new Date(timeString)
+  const date = new Date(timeString*1000)
   return date.toLocaleString('zh-TW', {
     year: 'numeric',
     month: '2-digit',
@@ -682,64 +682,236 @@ function removeNotification(i) {
   .modal-content.modal-large {
     max-width: 95% !important;
     margin: 20px auto;
+    max-height: 90vh;
   }
   
   .room-list-container {
-    margin: 0 10px 20px 10px;
-    padding: 0 5px;
+    margin: 0 10px 15px 10px;
+    padding: 0;
   }
   
   .room-list {
-    margin: 0 5px;
+    margin: 0;
+    border-radius: 8px;
   }
   
-  .room-list-header,
+  /* 改為卡片式佈局 */
+  .room-list-header {
+    display: none; /* 隱藏表頭 */
+  }
+  
   .room-item {
-    grid-template-columns: 1fr;
-    gap: 12px;
-    padding: 15px 20px;
-    text-align: center;
-  }
-  
-  .room-list-header span,
-  .room-item span {
-    padding: 8px 0;
+    display: block;
+    padding: 20px;
     border-bottom: 1px solid #f1f3f4;
+    text-align: left;
   }
   
-  .room-list-header span:last-child,
-  .room-item span:last-child {
-    border-bottom: none;
+  .room-item:hover {
+    transform: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   }
   
+  .room-item.selected {
+    border-left: 4px solid #2196f3;
+    background: linear-gradient(135deg, #f0f7ff, #e3f2fd);
+  }
+  
+  /* 卡片式內容佈局 */
   .room-title {
-    text-align: center !important;
+    display: block;
+    font-size: 16px;
+    font-weight: 600;
+    color: #212529;
+    margin-bottom: 12px;
+    text-align: left !important;
+  }
+  
+  .room-title::before {
+    content: "📋 ";
+    color: #007bff;
+  }
+  
+  .room-host {
+    display: block;
+    margin-bottom: 8px;
+    color: #6c757d;
+    font-size: 14px;
+    text-align: left;
+  }
+  
+  .room-host::before {
+    content: "👤 主持人：";
+    color: #28a745;
+    font-weight: 500;
+  }
+  
+  .room-status {
+    display: inline-block;
+    margin-bottom: 8px;
+    margin-right: 15px;
+    padding: 6px 12px;
+    font-size: 11px;
+    min-width: auto;
+  }
+  
+  .room-time {
+    display: block;
+    color: #6c757d;
+    font-size: 13px;
+    text-align: left;
+  }
+  
+  .room-time::before {
+    content: "🕒 建立時間：";
+    color: #ffc107;
+    font-weight: 500;
+  }
+  
+  /* 篩選器優化 */
+  .filter-section {
+    margin-bottom: 20px;
+    padding: 15px;
+  }
+  
+  .filter-section label {
     font-size: 15px;
+    margin-bottom: 12px;
   }
   
   .filter-buttons {
     justify-content: center;
     gap: 8px;
+    flex-wrap: wrap;
   }
   
   .filter-btn {
-    padding: 10px 16px;
-    font-size: 13px;
+    padding: 8px 14px;
+    font-size: 12px;
+    min-width: 70px;
   }
   
-  /* 手機版內嵌表單 */
+  /* 手機版內嵌表單優化 - 修復被遮蓋問題 */
+  .room-join-form {
+    background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+    margin: 15px 0 -20px 0; /* 修改左右邊距為0 */
+    border-radius: 0 0 8px 8px;
+  }
+  
+  .join-form-content {
+    padding: 20px 15px; /* 調整左右padding */
+  }
+  
+  .join-form-content h4 {
+    font-size: 15px;
+    margin-bottom: 15px;
+    text-align: center;
+  }
+  
   .form-row {
     flex-direction: column;
-    gap: 12px;
+    gap: 15px;
     align-items: stretch;
+  }
+  
+  .form-row .form-group label {
+    font-size: 13px;
+    text-align: center;
+    display: block;
+    margin-bottom: 8px;
+  }
+  
+  .join-input {
+    padding: 12px 15px;
+    font-size: 16px; /* 防止iOS縮放 */
+    text-align: center;
+    letter-spacing: 2px;
+    border-radius: 8px;
+    width: 100%;
+    box-sizing: border-box;
   }
   
   .form-row .form-actions {
     justify-content: center;
+    gap: 12px;
+  }
+  
+  .btn-sm {
+    padding: 10px 20px;
+    font-size: 14px;
+    border-radius: 6px;
+  }
+  
+  /* 空狀態優化 */
+  .no-rooms {
+    padding: 40px 20px;
+    font-size: 15px;
+    line-height: 1.5;
+  }
+}
+
+@media (max-width: 480px) {
+  .modal-content.modal-large {
+    max-width: 98% !important;
+    margin: 10px auto;
+    max-height: 95vh;
+  }
+  
+  .room-list-container {
+    margin: 0 5px 10px 5px; /* 調整左右邊距 */
+  }
+  
+  .filter-section {
+    padding: 12px;
+  }
+  
+  .filter-buttons {
+    gap: 6px;
+  }
+  
+  .filter-btn {
+    padding: 6px 10px;
+    font-size: 11px;
+    min-width: 60px;
+  }
+  
+  .room-item {
+    padding: 15px;
+  }
+  
+  .room-title {
+    font-size: 15px;
+    margin-bottom: 10px;
+  }
+  
+  /* 修復小螢幕輸入表單 */
+  .room-join-form {
+    margin: 15px 0 -15px 0; /* 確保左右沒有負邊距 */
   }
   
   .join-form-content {
-    padding: 15px 20px;
+    padding: 15px 10px; /* 減少左右padding */
+  }
+  
+  .form-row .form-actions {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .btn-sm {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  /* 導覽列響應式 */
+  .nav-actions {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .nav-actions .btn {
+    font-size: 12px;
+    padding: 8px 12px;
   }
 }
 </style>

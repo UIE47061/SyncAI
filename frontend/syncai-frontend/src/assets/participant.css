@@ -287,12 +287,7 @@
 }
 
 /* Responsive */
-@media (max-width: 768px) {
-    .nav-container {
-        flex-direction: column;
-        gap: 1rem;
-    }
-    
+@media (max-width: 768px) {    
     .section-header {
         flex-direction: column;
         gap: 1rem;

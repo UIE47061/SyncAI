@@ -21,6 +21,7 @@
     display: flex;
     gap: 1rem;
     font-size: 0.92rem;
+    align-items: center;
 }
 
 .room-code, .participant-count {
@@ -40,7 +41,7 @@
 }
 
 .panel-header {
-    padding: 1.5rem;
+    padding: 1.3rem;
     border-bottom: 1px solid var(--border);
     display: flex;
     justify-content: space-between;
@@ -49,7 +50,7 @@
 }
 
 .panel-header h2 {
-    font-size: 1.25rem;
+    font-size: 1.2rem;
     font-weight: 600;
 }
 
@@ -187,7 +188,7 @@
 .control-section h3 {
     font-size: 1rem;
     font-weight: 600;
-    margin-bottom: 1rem;
+    margin-bottom: 0.75rem;
     color: var(--text-primary);
 }
 
@@ -205,7 +206,7 @@
 }
 
 .share-item span {
-    font-size: 0.875rem;
+    font-size: 0.9rem;
     color: var(--text-secondary);
     font-weight: 500;
 }
@@ -223,7 +224,7 @@
 .code-display span {
     flex: 1;
     font-family: 'Space Mono', monospace;
-    font-size: 0.875rem;
+    font-size: 0.9rem;
     color: var(--text-primary);
     word-break: break-all;
 }
@@ -322,11 +323,6 @@ input:checked + .slider:before {
 }
 
 @media (max-width: 768px) {
-    .nav-container {
-        flex-direction: column;
-        gap: 1rem;
-    }
-    
     .room-info {
         flex-direction: column;
         gap: 0.5rem;

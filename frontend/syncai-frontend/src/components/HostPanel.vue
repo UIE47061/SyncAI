@@ -87,10 +87,10 @@
           </template>
         </div>
         
-        <!-- 問題列表 -->
+        <!-- 意見列表 -->
         <div class="questions-panel">
           <div class="panel-header">
-            <h2>問題列表 - {{ topics[selectedTopicIndex]?.title || '未選擇主題' }}</h2>
+            <h2>意見列表 - {{ topics[selectedTopicIndex]?.title || '未選擇主題' }}</h2>
             <div class="panel-controls">
               <select v-model="sortBy" class="sort-options">
                 <option value="votes">按票數排序</option>
@@ -126,7 +126,7 @@
                       <i v-if="q.answered" class="fa-solid fa-circle-check"></i>
                       <i v-else class="fa-regular fa-circle"></i>
                     </button>
-                    <button class="btn-icon" @click="deleteQuestion(q.id)" title="刪除問題">
+                    <button class="btn-icon" @click="deleteQuestion(q.id)" title="刪除意見">
                       <i class="fa-solid fa-trash-can"></i>
                     </button>
                   </div>
@@ -195,7 +195,7 @@
                 <input type="checkbox" v-model="settings.allowQuestions">
                 <span class="slider"></span>
               </label>
-              <span>允許新問題</span>
+              <span>允許新意見</span>
             </div>
             <div class="setting-item">
               <label class="switch">
@@ -210,7 +210,7 @@
             <div class="stats-grid">
               <div class="stat-item">
                 <div class="stat-number">{{ questions.length }}</div>
-                <div class="stat-label">總問題數</div>
+                <div class="stat-label">總意見數</div>
               </div>
               <div class="stat-item">
                 <div class="stat-number">{{ totalVotes }}</div>
@@ -368,7 +368,7 @@ const roomStatusText = computed(() => {
 
 // participantUrl.value = `${window.location.protocol}//${window.location.hostname}:5173/participant?room=${roomCode.value}`
 
-// 問題排序
+// 意見排序
 const sortedQuestions = computed(() => {
   const arr = [...questions.value]
   if (sortBy.value === 'votes') {
@@ -452,7 +452,7 @@ function saveRoom() {
   }
 }
 
-// 獲取問題列表
+// 獲取意見列表
 async function fetchQuestions() {
   if (!roomCode.value) return
   
@@ -471,11 +471,11 @@ async function fetchQuestions() {
       saveRoom()
     }
   } catch (error) {
-    console.error('獲取問題列表失敗:', error)
+    console.error('獲取意見列表失敗:', error)
   }
 }
 
-// 問題操作
+// 意見操作
 function toggleAnswered(id) {
   const q = questions.value.find(q => q.id === id)
   if (q) {
@@ -484,7 +484,7 @@ function toggleAnswered(id) {
   }
 }
 function deleteQuestion(id) {
-  if (confirm('確定要刪除這個問題嗎？')) {
+  if (confirm('確定要刪除這個意見嗎？')) {
     questions.value = questions.value.filter(q => q.id !== id)
     room.value.questions = questions.value
     saveRoom()
@@ -492,12 +492,12 @@ function deleteQuestion(id) {
 }
 
 async function clearAllQuestions() {
-  if (confirm('確定要清空所有問題嗎？此操作無法復原。')) {
+  if (confirm('確定要清空所有意見嗎？此操作無法復原。')) {
     // 獲取當前主題名稱
     const currentTopic = topics.value[selectedTopicIndex.value]?.title
     
     if (!currentTopic) {
-      showNotification('未選擇主題，無法清空問題', 'error')
+      showNotification('未選擇主題，無法清空意見', 'error')
       return
     }
     
@@ -521,7 +521,7 @@ async function clearAllQuestions() {
       const result = await response.json()
       
       if (result.success) {
-        // 清空本地問題列表
+        // 清空本地意見列表
         questions.value = []
         if (room.value) {
           room.value.questions = []
@@ -532,14 +532,14 @@ async function clearAllQuestions() {
         const message = `已清空主題「${result.topic}」的所有內容：刪除了 ${result.deleted_comments_count} 個評論和 ${result.deleted_votes_count} 個投票記錄`
         showNotification(message, 'success')
         
-        // 重新獲取問題列表以確保同步
+        // 重新獲取意見列表以確保同步
         await fetchQuestions()
       } else {
-        showNotification(result.error || '清空問題失敗', 'error')
+        showNotification(result.error || '清空意見失敗', 'error')
       }
     } catch (error) {
-      console.error('清空問題失敗:', error)
-      showNotification('清空問題失敗，請稍後再試', 'error')
+      console.error('清空意見失敗:', error)
+      showNotification('清空意見失敗，請稍後再試', 'error')
     }
   }
 }
@@ -727,7 +727,7 @@ async function saveTopicEdit() {
         topics.value[editingTopicIndex.value].title = newTopicName
         saveTopics()
         
-        // 如果重命名的是當前主題，刷新問題列表
+        // 如果重命名的是當前主題，刷新意見列表
         if (result.is_current_topic) {
           await fetchQuestions()
         }
@@ -1156,7 +1156,7 @@ onMounted(async () => {
     return
   }
   
-  // 延遲啟動問題輪詢，確保 loadRoom() 先完成
+  // 延遲啟動意見輪詢，確保 loadRoom() 先完成
   setTimeout(() => {
     fetchQuestions() // 首次獲取
     dataPoller = setInterval(fetchQuestions, 5000)
@@ -1452,10 +1452,6 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 16px;
-}
-.share-item span {
-  font-size: 1.03em;
-  color: #b8b8b8;
 }
 .code-display {
   display: flex;

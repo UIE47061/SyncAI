@@ -8,7 +8,7 @@
           <span>參與者</span>
         </div>
         <div class="nav-actions">
-          <span class="room-info">代碼: <strong>{{ roomCode || '------' }}</strong></span>
+          <span class="room-info room-code">代碼: <strong>{{ roomCode || '------' }}</strong></span>
           <div class="status-indicator" :class="'status-' + roomStatus.toLowerCase()">
             <i class="status-icon" :class="statusIcon"></i>
             {{ roomStatusText }}
@@ -19,7 +19,7 @@
           <!-- 當房間不存在時顯示返回主頁按鈕 -->
           <button 
             v-if="roomStatus === 'NotFound' || roomStatus === 'End'"
-            class="btn btn-secondary btn-home"
+            class="btn btn-outline btn-home"
             @click="goHome"
             title="返回主頁"
           >
@@ -31,51 +31,54 @@
 
     <main class="participant-content">
       <div class="participant-layout">
-        <!-- 主題與問題區 -->
+        <!-- 主題與意見區 - 合併為一個區域 -->
         <div class="topic-questions-container">
-          <!-- 當前主題區塊 -->
-          <div class="topic-panel">
-            <div class="info-title">
-              <i class="fa-solid fa-lightbulb"></i> 當前主題
+          <div class="combined-panel">
+            <!-- 當前主題區塊 - 突出顯示 -->
+            <div class="topic-section">
+              <div class="topic-header">
+                <i class="fa-solid fa-lightbulb"></i>
+                <h3>當前主題</h3>
+              </div>
+              <div class="current-topic">
+                {{ currentTopic || '等待主持人設定主題' }}
+              </div>
             </div>
-            <div class="current-topic">
-              {{ currentTopic || '等待主持人設定主題' }}
+            
+            <!-- 分隔線 -->
+            <div class="section-divider"></div>
+            
+            <!-- 提問面板 -->
+            <div class="question-submit-section">
+              <form @submit.prevent="submitQuestion">
+                <input 
+                  v-model="newQuestion" 
+                  placeholder="請輸入您的意見..." 
+                  :disabled="roomStatus !== 'Discussion'"
+                />
+                <button 
+                  type="submit" 
+                  class="btn btn-primary" 
+                  :disabled="!newQuestion.trim() || roomStatus !== 'Discussion'"
+                >
+                  <i class="fa-solid fa-paper-plane"></i> 提交意見
+                </button>
+              </form>
             </div>
-          </div>
-          
-          <!-- 提問面板 -->
-          <div class="question-submit-panel">
-            <div class="info-title">
-              <i class="fa-solid fa-message"></i> 提出問題
-            </div>
-            <form @submit.prevent="submitQuestion">
-              <input 
-                v-model="newQuestion" 
-                placeholder="請輸入您的問題..." 
-                :disabled="roomStatus !== 'Discussion'"
-              />
-              <button 
-                type="submit" 
-                class="btn btn-primary" 
-                :disabled="!newQuestion.trim() || roomStatus !== 'Discussion'"
-              >
-                <i class="fa-solid fa-paper-plane"></i> 提交問題
-              </button>
-            </form>
           </div>
         </div>
         
-        <!-- 問題列表面板 -->
+        <!-- 意見列表面板 -->
         <div class="questions-panel">
           <div class="info-title">
-            <i class="fa-solid fa-comments"></i> 問題列表
+            <i class="fa-solid fa-comments"></i> 意見列表
           </div>
           
           <div v-if="questions.length === 0" class="empty-state">
             <div class="empty-icon">
               <i class="fa-regular fa-comment-dots"></i>
             </div>
-            <div class="empty-text">目前還沒有問題。在討論期間，您可以提出問題！</div>
+            <div class="empty-text">目前還沒有意見。在討論期間，您可以提出意見！</div>
           </div>
           
           <div v-else class="question-list">
@@ -166,7 +169,7 @@ const questionSort = ref('latest')
 // 計算屬性
 const canSubmit = computed(() => !!newQuestion.value.trim() && roomStatus.value === 'Discussion')
 
-// 排序後的問題列表
+// 排序後的意見列表
 const sortedQuestions = computed(() => {
   if (questionSort.value === 'votes') {
     return [...questions.value].sort((a, b) => (b.vote_good || 0) - (a.vote_good || 0))
@@ -270,7 +273,7 @@ function startPolling() {
   // 每 5 秒輪詢一次房間主題和計時器狀態（降低輪詢頻率）
   statePoller = setInterval(fetchRoomState, 5000)
   
-  // 每 10 秒輪詢一次問題列表作為備份
+  // 每 10 秒輪詢一次意見列表作為備份
   questionsPoller = setInterval(fetchQuestions, 10000)
   
   // 每秒更新本地計時器（避免跳動）
@@ -396,7 +399,7 @@ async function fetchRoomState() {
     const previousTopic = currentTopic.value
     currentTopic.value = data.topic || '等待主持人設定主題'
     
-    // 如果主題改變了，更新問題列表
+    // 如果主題改變了，更新意見列表
     if (previousTopic !== currentTopic.value && data.comments) {
       questions.value = data.comments || []
       // 獲取用戶投票記錄
@@ -416,7 +419,7 @@ async function fetchRoomState() {
   }
 }
 
-// 獲取問題列表
+// 獲取意見列表
 async function fetchQuestions() {
   if (!roomCode.value) return
   
@@ -433,7 +436,7 @@ async function fetchQuestions() {
     // 獲取用戶投票記錄
     await fetchUserVotes()
   } catch (error) {
-    console.error('獲取問題列表失敗:', error)
+    console.error('獲取意見列表失敗:', error)
     questions.value = []
   }
 }
@@ -503,7 +506,7 @@ const copyRoomLink = async () => {
 
 // 提問
 
-// 提交問題
+// 提交意見
 async function submitQuestion() {
   if (!newQuestion.value || !roomCode.value) return
   
@@ -512,7 +515,7 @@ async function submitQuestion() {
   const currentTime = Date.now()
   
   if (lastSubmitTime && (currentTime - parseInt(lastSubmitTime)) < 3000) {
-    showNotification('請稍候再提交問題', 'info')
+    showNotification('請稍候再提交意見', 'info')
     return
   }
   
@@ -541,14 +544,14 @@ async function submitQuestion() {
     
     newQuestion.value = ''
     await fetchQuestions()
-    showNotification('問題已提交', 'success')
+    showNotification('意見已提交', 'success')
   } catch (error) {
-    console.error('提交問題失敗:', error)
-    showNotification('提交問題失敗，請稍後再試', 'error')
+    console.error('提交意見失敗:', error)
+    showNotification('提交意見失敗，請稍後再試', 'error')
   }
 }
 
-// 投票問題
+// 投票意見
 async function voteQuestion(questionId, voteType = 'good') {
   if (!roomCode.value || !questionId) return
   
@@ -613,7 +616,7 @@ async function voteQuestion(questionId, voteType = 'good') {
       }
     }
     
-    // 更新問題列表中的投票數
+    // 更新意見列表中的投票數
     const question = questions.value.find(q => q.id === questionId)
     if (question) {
       question.vote_good = data.vote_good
@@ -681,229 +684,167 @@ function goHome() {
 
 /* 其他樣式都在 participant.css 中定義 */
 
-/* 在 styles.css 中定義 */
-
-/* 會議資訊面板 */
-.participant-info-panel {
-  background: var(--secondary-color);
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-  padding: 22px 20px;
-  color: #eee;
+/* 合併面板樣式 - 參考主持人頁面配色 */
+.combined-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  box-shadow: var(--shadow);
+  padding: 0;
+  color: var(--text-primary);
   margin-bottom: 24px;
-  min-width: 0;
+  overflow: hidden;
   transition: all 0.3s ease;
 }
 
-.participant-info-panel:hover {
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
-  transform: translateY(-2px);
+.combined-panel:hover {
+  box-shadow: var(--shadow-lg);
 }
 
-.info-title {
+/* 主題區塊 - 突出但和諧的設計 */
+.topic-section {
+  background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-hover) 100%);
+  padding: 24px 28px;
+  position: relative;
+  overflow: hidden;
+}
+
+.topic-section::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(45deg, rgba(255, 255, 255, 0.1) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.topic-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 1.2rem;
-  font-weight: 600;
+  gap: 12px;
   margin-bottom: 16px;
-  color: #e2e8f0;
-  border-bottom: 1px solid #3b4253;
-  padding-bottom: 10px;
+  position: relative;
+  z-index: 1;
 }
 
-.info-title i {
-  color: #7db2ff;
+.topic-header i {
+  font-size: 1.3rem;
+  color: #fbbf24;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
 }
 
-.info-row {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.code-qrcode-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 20px;
-  flex-wrap: wrap;
-}
-
-.code-col {
-  flex: 1.5 1 0;
-  min-width: 180px;
-}
-
-.qrcode-col {
-  flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 8px;
-  padding: 12px;
-}
-
-.qrcode-caption {
-  font-size: 0.93em;
-  color: #aaa;
-  margin-top: 8px;
-}
-
-.link-row {
-  margin-top: 16px;
-  flex: 1 1 100%;
-}
-
-.info-label {
-  font-size: 0.97em;
-  color: #9ca7be;
-  margin-bottom: 6px;
-}
-
-.code-display {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 4px;
-}
-
-.code-text, .link-text {
-  font-family: 'Fira Mono', 'Consolas', monospace;
-  font-size: 1.07em;
-  background: #18191b;
-  color: #3c91f6;
-  border-radius: 8px;
-  padding: 6px 12px;
-  letter-spacing: 1.2px;
-  overflow: auto;
-  max-width: 100%;
-}
-
-.link-text {
-  width: 100%;
-  overflow-x: auto;
-  white-space: nowrap;
-}
-
-.btn-icon {
-  background: #2d3748;
-  color: #e2e8f0;
-  border: none;
-  border-radius: 6px;
-  font-size: 1em;
-  padding: 6px 10px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-icon:hover {
-  background: #3a4a63;
-  transform: translateY(-2px);
-}
-
-.topic-panel {
-  background: var(--secondary-color);
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-  padding: 22px 20px;
-  color: #eee;
-  margin-bottom: 16px;
-  transition: all 0.3s ease;
-}
-
-.topic-panel:hover {
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
-  transform: translateY(-2px);
+.topic-header h3 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 .current-topic {
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 8px;
-  padding: 14px 18px;
-  border-left: 4px solid #7db2ff;
-  font-size: 1.2rem;
-  line-height: 1.5;
-  color: #e2e8f0;
-  margin-top: 10px;
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(10px);
+  border-radius: 0.75rem;
+  padding: 18px 22px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  font-size: 1.1rem;
+  line-height: 1.6;
+  color: #ffffff;
+  position: relative;
+  z-index: 1;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
-.topic-container {
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 8px;
-  padding: 12px 16px;
-  border-left: 4px solid #7db2ff;
+/* 分隔線 */
+.section-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, var(--border) 50%, transparent 100%);
+  margin: 0;
 }
 
-.topic-label {
-  color: #9ca7be;
-  margin-bottom: 6px;
+/* 提問區塊 - 使用統一的配色 */
+.question-submit-section {
+  padding: 24px 28px;
+  background: var(--background);
 }
 
-/* 提問區 */
-.question-submit-panel {
-  background: var(--secondary-color);
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-  padding: 22px 20px;
-  color: #eee;
-  margin-bottom: 24px;
-  transition: all 0.3s ease;
+.question-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
 }
 
-.question-submit-panel:hover {
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
-  transform: translateY(-2px);
+.question-header i {
+  font-size: 1.1rem;
+  color: var(--primary-color);
 }
 
-.question-submit-panel form {
+.question-header h4 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.question-submit-section form {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  margin-top: 16px;
+  gap: 14px;
 }
 
-.question-submit-panel input {
-  border-radius: 8px;
-  padding: 10px 14px;
-  border: 1px solid #3b4253;
-  background: #1e222a;
-  color: #fff;
-  font-size: 1em;
+.question-submit-section input {
+  border-radius: 0.75rem;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: 1rem;
   transition: all 0.2s ease;
 }
 
-.question-submit-panel input:focus {
-  border-color: #7db2ff;
+.question-submit-section input:focus {
+  border-color: var(--primary-color);
   outline: none;
-  box-shadow: 0 0 0 2px rgba(125, 178, 255, 0.2);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  background: var(--background);
 }
 
-.btn.btn-primary {
-  background: linear-gradient(135deg, #3c91f6, #2d8cf0);
-  color: #fff;
+.question-submit-section input::placeholder {
+  color: var(--text-secondary);
+}
+
+.question-submit-section .btn.btn-primary {
+  background: var(--primary-color);
+  color: #ffffff;
   border: none;
-  border-radius: 8px;
-  padding: 10px 16px;
-  font-size: 1em;
-  font-weight: 500;
+  border-radius: 0.75rem;
+  padding: 12px 18px;
+  font-size: 1rem;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
   text-align: center;
+  box-shadow: var(--shadow);
 }
 
-.btn.btn-primary:hover {
-  background: linear-gradient(135deg, #4b9ef8, #3a96f3);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(45, 140, 240, 0.3);
+.question-submit-section .btn.btn-primary:hover:not(:disabled) {
+  background: var(--primary-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-lg);
 }
 
-.btn.btn-primary:disabled {
-  background: #4a5568;
+.question-submit-section .btn.btn-primary:disabled {
+  background: var(--secondary-color);
   cursor: not-allowed;
   box-shadow: none;
   transform: none;
 }
+
+/* 響應式設計 */
 
 .btn.btn-secondary {
   background: linear-gradient(135deg, #6b7280, #4b5563);
@@ -930,13 +871,14 @@ function goHome() {
   gap: 6px;
 }
 
-/* 問題列表 */
+/* 意見列表 - 統一配色方案 */
 .questions-panel {
-  background: var(--secondary-color);
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-  padding: 22px 20px;
-  color: #eee;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  box-shadow: var(--shadow);
+  padding: 24px 28px;
+  color: var(--text-primary);
   min-width: 0;
   grid-column: 1 / -1;
   max-height: 600px;
@@ -945,35 +887,52 @@ function goHome() {
 }
 
 .questions-panel:hover {
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+  box-shadow: var(--shadow-lg);
+}
+
+.questions-panel .info-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 20px;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 12px;
+}
+
+.questions-panel .info-title i {
+  color: var(--primary-color);
+  font-size: 1.3rem;
 }
 
 .question-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 16px;
-  margin-top: 16px;
+  margin-top: 20px;
 }
 
 .question-item {
-  border: 1px solid #31354a;
-  border-radius: 8px;
-  padding: 14px 16px;
-  background: #292f3a;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 16px 18px;
+  background: var(--background);
   transition: all 0.2s ease;
 }
 
 .question-item:hover {
-  background: #2f3642;
+  border-color: var(--primary-color);
+  box-shadow: var(--shadow);
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .question-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }
 
 .question-votes {
@@ -983,44 +942,44 @@ function goHome() {
 }
 
 .vote-button {
-  background: #2d3748;
-  border: none;
-  border-radius: 6px;
-  padding: 4px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 6px 12px;
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #a0aec0;
-  font-size: 0.9rem;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
-.vote-button:hover {
-  background: #3a4a63;
+.vote-button:hover:not(:disabled) {
+  background: var(--background);
+  border-color: var(--primary-color);
+  color: var(--primary-color);
 }
 
 .vote-button.vote-good.voted {
-  background: rgba(60, 145, 246, 0.2);
-  color: #3c91f6;
+  background: rgba(37, 99, 235, 0.1);
+  color: var(--primary-color);
+  border-color: var(--primary-color);
 }
 
 .vote-button.vote-bad.voted {
-  background: rgba(239, 68, 68, 0.2);
-  color: #ef4444;
+  background: rgba(220, 38, 38, 0.1);
+  color: var(--danger-color);
+  border-color: var(--danger-color);
 }
 
-.vote-button.vote-bad:hover {
-  background: #3a4a63;
-}
-
-.vote-button.voted {
-  background: rgba(60, 145, 246, 0.2);
-  color: #3c91f6;
+.vote-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .vote-icon {
-  font-size: 1.1em;
+  font-size: 1em;
 }
 
 .vote-count {
@@ -1028,27 +987,30 @@ function goHome() {
 }
 
 .answered-tag {
-  background: rgba(25, 201, 114, 0.2);
-  color: #19c972;
-  font-size: 0.91em;
-  border-radius: 4px;
-  padding: 3px 8px;
-  margin-right: 7px;
+  background: rgba(5, 150, 105, 0.1);
+  color: var(--success-color);
+  font-size: 0.875rem;
+  border-radius: 0.375rem;
+  padding: 4px 8px;
+  margin-right: 8px;
   display: flex;
   align-items: center;
   gap: 4px;
+  border: 1px solid rgba(5, 150, 105, 0.2);
 }
 
 .question-content {
-  margin: 8px 0;
-  line-height: 1.5;
+  margin: 12px 0;
+  line-height: 1.6;
   word-break: break-word;
+  color: var(--text-primary);
+  font-size: 1rem;
 }
 
 .question-meta {
-  font-size: 0.92em;
-  color: #8fa2b3;
-  margin-top: 8px;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin-top: 12px;
   display: flex;
   gap: 16px;
 }
@@ -1060,29 +1022,38 @@ function goHome() {
 }
 
 .meta-icon {
-  color: #a0aec0;
+  color: var(--text-secondary);
 }
 
 .empty-state {
   text-align: center;
-  color: #a3b3c2;
-  margin: 40px 0;
-  padding: 20px;
-  background: rgba(255, 255, 255, 0.03);
-  border-radius: 10px;
+  color: var(--text-secondary);
+  margin: 50px 0;
+  padding: 30px;
+  background: var(--surface);
+  border-radius: 1rem;
+  border: 1px dashed var(--border);
 }
 
 .empty-icon {
-  font-size: 2.8em;
-  margin-bottom: 12px;
-  color: #4a5568;
+  font-size: 3rem;
+  margin-bottom: 16px;
+  color: var(--text-secondary);
 }
 
 .empty-text {
-  font-size: 1.05em;
-  max-width: 280px;
+  font-size: 1.1em;
+  max-width: 320px;
   margin: 0 auto;
-  line-height: 1.5;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+/* 按鈕樣式補充 */
+.btn-home {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 /* 響應式設計 */
@@ -1103,6 +1074,31 @@ function goHome() {
   
   .timer {
     font-size: 1.1rem;
+  }
+  
+  .combined-panel {
+    border-radius: 12px;
+  }
+  
+  .topic-section {
+    padding: 20px 20px;
+  }
+  
+  .question-submit-section {
+    padding: 20px 20px;
+  }
+  
+  .topic-header h3 {
+    font-size: 1.2rem;
+  }
+  
+  .current-topic {
+    padding: 16px 18px;
+    font-size: 1.1rem;
+  }
+  
+  .questions-panel {
+    padding: 20px 20px;
   }
 }
 
@@ -1129,6 +1125,40 @@ function goHome() {
   
   .topic-questions-container {
     gap: 16px;
+  }
+  
+  .combined-panel {
+    border-radius: 10px;
+  }
+  
+  .topic-section {
+    padding: 18px 16px;
+  }
+  
+  .question-submit-section {
+    padding: 18px 16px;
+  }
+  
+  .topic-header h3 {
+    font-size: 1.1rem;
+  }
+  
+  .current-topic {
+    padding: 14px 16px;
+    font-size: 1rem;
+  }
+  
+  .questions-panel {
+    padding: 18px 16px;
+  }
+  
+  .question-item {
+    padding: 16px 18px;
+  }
+  
+  .vote-button {
+    padding: 5px 10px;
+    font-size: 0.85rem;
   }
 }
 </style>
