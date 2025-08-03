@@ -405,7 +405,7 @@ body {
   color: #19c972;
 }
 
-.status-stop {
+.status-notfound {
   background-color: rgba(240, 71, 71, 0.15);
   color: #f04747;
 }
@@ -415,9 +415,9 @@ body {
   color: #aaaaaa;
 }
 
-.status-notfound {
-  background-color: rgba(255, 184, 0, 0.15);
-  color: #ffb800;
+.status-stop {
+  background-color: #fef3c7;
+  color: #b45309;
 }
 
 .timer-display {
@@ -435,7 +435,7 @@ body {
   font-size: 1.3rem;
   font-weight: 700;
   font-family: 'Roboto Mono', monospace;
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(0, 30, 155, 0.5);
   padding: 4px 12px;
   border-radius: 6px;
   color: #e2e8f0;

@@ -13,9 +13,18 @@
             <i class="status-icon" :class="statusIcon"></i>
             {{ roomStatusText }}
           </div>
-          <div class="timer-display" v-if="remainingTime > 0">
+          <div class="timer-display" v-if="remainingTime > 0 && roomStatus === 'Discussion'">
             <span class="timer">{{ formattedRemainingTime }}</span>
           </div>
+          <!-- 當房間不存在時顯示返回主頁按鈕 -->
+          <button 
+            v-if="roomStatus === 'NotFound' || roomStatus === 'End'"
+            class="btn btn-secondary btn-home"
+            @click="goHome"
+            title="返回主頁"
+          >
+            <i class="fa-solid fa-home"></i> 返回主頁
+          </button>
         </div>
       </div>
     </nav>
@@ -77,23 +86,32 @@
                 </div>
                 <div class="question-votes">
                   <button 
-                    class="vote-button" 
-                    @click="voteQuestion(q.id)" 
+                    class="vote-button vote-good" 
+                    @click="voteQuestion(q.id, 'good')" 
                     :disabled="q.answered || roomStatus !== 'Discussion'"
-                    :class="{'voted': hasVoted(q.id)}"
+                    :class="{'voted': hasVotedGood(q.id)}"
                   >
                     <i class="vote-icon fa-solid fa-thumbs-up"></i>
-                    <span class="vote-count">{{ q.votes || 0 }}</span>
+                    <span class="vote-count">{{ q.vote_good || 0 }}</span>
+                  </button>
+                  <button 
+                    class="vote-button vote-bad" 
+                    @click="voteQuestion(q.id, 'bad')" 
+                    :disabled="q.answered || roomStatus !== 'Discussion'"
+                    :class="{'voted': hasVotedBad(q.id)}"
+                  >
+                    <i class="vote-icon fa-solid fa-thumbs-down"></i>
+                    <span class="vote-count">{{ q.vote_bad || 0 }}</span>
                   </button>
                 </div>
               </div>
               <div class="question-content">
-                {{ q.text }}
+                {{ q.content }}
               </div>
               <div class="question-meta">
                 <div class="meta-item">
                   <i class="meta-icon fa-regular fa-clock"></i>
-                  <span>{{ formatTime(q.createdAt) }}</span>
+                  <span>{{ formatTime(q.ts) }}</span>
                 </div>
                 <div class="meta-item" v-if="q.nickname">
                   <i class="meta-icon fa-regular fa-user"></i>
@@ -126,13 +144,14 @@
 
 <script setup>
 import { ref, onMounted, computed, onBeforeUnmount } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import QrcodeVue from 'qrcode.vue'
 
 // API 基礎 URL 設定
-const API_BASE_URL = 'http://localhost:8000' // 根據實際後端服務的地址和端口進行調整
+const API_BASE_URL = `${window.location.protocol}//${window.location.hostname}:8000`  // 根據實際後端服務的地址和端口進行調整
 
 const route = useRoute()
+const router = useRouter()
 const roomCode = ref(route.query.room || '')
 const roomLink = ref('')
 const questions = ref([])
@@ -141,7 +160,7 @@ const notifications = ref([])
 const roomStatus = ref('NotFound')
 const currentTopic = ref('')
 const remainingTime = ref(0)
-const votedQuestions = ref(new Set())
+const votedQuestions = ref({ good: new Set(), bad: new Set() })
 const questionSort = ref('latest')
 
 // 計算屬性
@@ -150,9 +169,9 @@ const canSubmit = computed(() => !!newQuestion.value.trim() && roomStatus.value 
 // 排序後的問題列表
 const sortedQuestions = computed(() => {
   if (questionSort.value === 'votes') {
-    return [...questions.value].sort((a, b) => (b.votes || 0) - (a.votes || 0))
+    return [...questions.value].sort((a, b) => (b.vote_good || 0) - (a.vote_good || 0))
   } else {
-    return [...questions.value].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    return [...questions.value].sort((a, b) => (b.ts || 0) - (a.ts || 0))
   }
 })
 
@@ -189,19 +208,49 @@ const statusIcon = computed(() => {
   }
 })
 
-// 檢查是否已投票
+// 檢查是否已投好評
+function hasVotedGood(questionId) {
+  return votedQuestions.value.good.has(questionId)
+}
+
+// 檢查是否已投差評
+function hasVotedBad(questionId) {
+  return votedQuestions.value.bad.has(questionId)
+}
+
+// 檢查是否已投票（保持兼容性）
 function hasVoted(questionId) {
-  return votedQuestions.value.has(questionId)
+  return hasVotedGood(questionId) || hasVotedBad(questionId)
 }
 
 // 取得會議資訊
 onMounted(async () => {
   roomLink.value = `${window.location.protocol}//${window.location.hostname}:5173/participant?room=${roomCode.value}`
   
-  // 初始加載數據
+  // 如果沒有房間代碼，直接返回主頁
+  if (!roomCode.value) {
+    showNotification('請提供房間代碼', 'error')
+    setTimeout(() => {
+      router.push('/')
+    }, 2000)
+    return
+  }
+  
+  // 初始檢查房間狀態
+  const initialStatus = await fetchRoomStatus()
+  
+  // 如果房間不存在，顯示提示並返回主頁
+  if (initialStatus === 'NotFound') {
+    showNotification('該房間尚未建立，即將返回主頁！', 'error')
+    setTimeout(() => {
+      router.push('/')
+    }, 3000) // 3秒後自動返回主頁
+    return
+  }
+  
+  // 繼續加載其他數據
   await Promise.all([
     fetchQuestions(),
-    fetchRoomStatus(),
     fetchRoomState()
   ])
   
@@ -213,25 +262,38 @@ onMounted(async () => {
 })
 
 // 開始數據輪詢
-let questionsPoller, statusPoller, statePoller, heartbeatPoller
+let questionsPoller, statusPoller, statePoller, heartbeatPoller, localTimerPoller
 function startPolling() {
-  // 每 5 秒輪詢一次問題列表
-  questionsPoller = setInterval(fetchQuestions, 5000)
-  
   // 每 3 秒輪詢一次房間狀態
   statusPoller = setInterval(fetchRoomStatus, 3000)
   
-  // 每 1 秒輪詢一次房間主題和計時器狀態
-  statePoller = setInterval(fetchRoomState, 1000)
+  // 每 5 秒輪詢一次房間主題和計時器狀態（降低輪詢頻率）
+  statePoller = setInterval(fetchRoomState, 5000)
+  
+  // 每 10 秒輪詢一次問題列表作為備份
+  questionsPoller = setInterval(fetchQuestions, 10000)
+  
+  // 每秒更新本地計時器（避免跳動）
+  localTimerPoller = setInterval(() => {
+    if (remainingTime.value > 0 && roomStatus.value === 'Discussion') {
+      remainingTime.value = Math.max(0, remainingTime.value - 1)
+    }
+  }, 1000)
 }
 
 // 清理輪詢器
 onBeforeUnmount(() => {
+  clearAllPolling()
+})
+
+// 清理所有輪詢
+function clearAllPolling() {
   clearInterval(questionsPoller)
   clearInterval(statusPoller)
   clearInterval(statePoller)
   clearInterval(heartbeatPoller)
-})
+  clearInterval(localTimerPoller)
+}
 
 // 註冊心跳服務
 function registerHeartbeat() {
@@ -296,7 +358,7 @@ async function sendHeartbeat(deviceId) {
 
 // 獲取房間狀態
 async function fetchRoomStatus() {
-  if (!roomCode.value) return
+  if (!roomCode.value) return 'NotFound'
   
   try {
     const response = await fetch(`${API_BASE_URL}/api/room_status?room=${roomCode.value}`)
@@ -306,6 +368,11 @@ async function fetchRoomStatus() {
     
     const data = await response.json()
     roomStatus.value = data.status
+    
+    // 如果在輪詢中檢測到房間不存在，停止輪詢
+    if (data.status === 'NotFound') {
+      clearAllPolling()
+    }
     
     return data.status
   } catch (error) {
@@ -326,8 +393,22 @@ async function fetchRoomState() {
     }
     
     const data = await response.json()
+    const previousTopic = currentTopic.value
     currentTopic.value = data.topic || '等待主持人設定主題'
-    remainingTime.value = data.countdown || 0
+    
+    // 如果主題改變了，更新問題列表
+    if (previousTopic !== currentTopic.value && data.comments) {
+      questions.value = data.comments || []
+      // 獲取用戶投票記錄
+      await fetchUserVotes()
+    }
+    
+    // 如果房間狀態為結束或停止，計時器設為0
+    if (roomStatus.value === 'End' || roomStatus.value === 'Stop') {
+      remainingTime.value = 0
+    } else {
+      remainingTime.value = data.countdown || 0
+    }
     
     return data
   } catch (error) {
@@ -345,11 +426,36 @@ async function fetchQuestions() {
       throw new Error(`HTTP error! Status: ${response.status}`)
     }
     
-    const data = await response.json()
-    questions.value = data.questions || []
+    const resp = await response.json()
+    const data = resp["comments"] || []
+    questions.value = data || []
+    
+    // 獲取用戶投票記錄
+    await fetchUserVotes()
   } catch (error) {
     console.error('獲取問題列表失敗:', error)
     questions.value = []
+  }
+}
+
+// 獲取用戶投票記錄
+async function fetchUserVotes() {
+  if (!roomCode.value) return
+  
+  try {
+    const deviceId = localStorage.getItem('device_id')
+    if (!deviceId) return
+    
+    const response = await fetch(`${API_BASE_URL}/api/questions/votes?room=${roomCode.value}&device_id=${deviceId}`)
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.status}`)
+    }
+    
+    const data = await response.json()
+    votedQuestions.value.good = new Set(data.voted_good || [])
+    votedQuestions.value.bad = new Set(data.voted_bad || [])
+  } catch (error) {
+    console.error('獲取投票記錄失敗:', error)
   }
 }
 
@@ -443,15 +549,15 @@ async function submitQuestion() {
 }
 
 // 投票問題
-async function voteQuestion(questionId) {
+async function voteQuestion(questionId, voteType = 'good') {
   if (!roomCode.value || !questionId) return
   
   try {
     const deviceId = localStorage.getItem('device_id') || `device_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
     localStorage.setItem('device_id', deviceId)
     
-    // 檢查是否已經投過票
-    const isVoted = hasVoted(questionId)
+    // 檢查是否已經投過該類型的票
+    const isVoted = voteType === 'good' ? hasVotedGood(questionId) : hasVotedBad(questionId)
     const method = isVoted ? 'DELETE' : 'POST'
     
     const response = await fetch(`${API_BASE_URL}/api/questions/vote`, {
@@ -461,8 +567,9 @@ async function voteQuestion(questionId) {
       },
       body: JSON.stringify({ 
         room: roomCode.value, 
-        question_id: questionId,
-        device_id: deviceId
+        comment_id: questionId,
+        device_id: deviceId,
+        vote_type: voteType
       })
     })
     
@@ -470,17 +577,50 @@ async function voteQuestion(questionId) {
       throw new Error(`HTTP error! Status: ${response.status}`)
     }
     
-    // 更新本地投票狀態
-    if (isVoted) {
-      votedQuestions.value.delete(questionId)
-    } else {
-      votedQuestions.value.add(questionId)
+    const data = await response.json()
+    
+    if (!data.success) {
+      if (data.already_voted) {
+        showNotification(`您已經投過${voteType === 'good' ? '好評' : '差評'}了`, 'info')
+      } else {
+        showNotification(data.error || '投票操作失敗', 'error')
+      }
+      return
     }
     
-    // 更新問題列表
-    await fetchQuestions()
+    // 更新本地投票狀態
+    if (isVoted) {
+      // 取消投票
+      if (voteType === 'good') {
+        votedQuestions.value.good.delete(questionId)
+        showNotification('已取消好評', 'success')
+      } else {
+        votedQuestions.value.bad.delete(questionId)
+        showNotification('已取消差評', 'success')
+      }
+    } else {
+      // 新增投票
+      if (voteType === 'good') {
+        votedQuestions.value.good.add(questionId)
+        // 如果之前投了差評，移除差評記錄
+        votedQuestions.value.bad.delete(questionId)
+        showNotification('已投好評', 'success')
+      } else {
+        votedQuestions.value.bad.add(questionId)
+        // 如果之前投了好評，移除好評記錄
+        votedQuestions.value.good.delete(questionId)
+        showNotification('已投差評', 'success')
+      }
+    }
     
-    showNotification(isVoted ? '已取消投票' : '已投票', 'success')
+    // 更新問題列表中的投票數
+    const question = questions.value.find(q => q.id === questionId)
+    if (question) {
+      question.vote_good = data.vote_good
+      question.vote_bad = data.vote_bad
+      question.votes = data.vote_good // 保持兼容性
+    }
+    
   } catch (error) {
     console.error('投票操作失敗:', error)
     showNotification('投票操作失敗，請稍後再試', 'error')
@@ -511,11 +651,19 @@ function removeNotification(index) {
 // 時間格式化
 function formatTime(ts) {
   try {
-    const d = new Date(ts)
+    // 如果是 Unix 時間戳（秒），轉為毫秒
+    const timestamp = typeof ts === 'number' && ts < 1e12 ? ts * 1000 : ts
+    const d = new Date(timestamp)
     return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
   } catch {
     return ''
   }
+}
+
+// 返回主頁
+function goHome() {
+  clearAllPolling()
+  router.push('/')
 }
 </script>
 
@@ -757,6 +905,31 @@ function formatTime(ts) {
   transform: none;
 }
 
+.btn.btn-secondary {
+  background: linear-gradient(135deg, #6b7280, #4b5563);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 0.9em;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.btn.btn-secondary:hover {
+  background: linear-gradient(135deg, #7c8fa5, #5a6575);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(107, 114, 128, 0.3);
+}
+
+.btn-home {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 /* 問題列表 */
 .questions-panel {
   background: var(--secondary-color);
@@ -824,6 +997,20 @@ function formatTime(ts) {
 }
 
 .vote-button:hover {
+  background: #3a4a63;
+}
+
+.vote-button.vote-good.voted {
+  background: rgba(60, 145, 246, 0.2);
+  color: #3c91f6;
+}
+
+.vote-button.vote-bad.voted {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+.vote-button.vote-bad:hover {
   background: #3a4a63;
 }
 
@@ -896,18 +1083,6 @@ function formatTime(ts) {
   max-width: 280px;
   margin: 0 auto;
   line-height: 1.5;
-}
-
-/* 通知動畫 */
-@keyframes slideIn {
-  from {
-    transform: translateY(-20px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
 }
 
 /* 響應式設計 */

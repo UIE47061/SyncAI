@@ -90,13 +90,16 @@
         <!-- 問題列表 -->
         <div class="questions-panel">
           <div class="panel-header">
-            <h2>問題列表</h2>
+            <h2>問題列表 - {{ topics[selectedTopicIndex]?.title || '未選擇主題' }}</h2>
             <div class="panel-controls">
               <select v-model="sortBy" class="sort-options">
                 <option value="votes">按票數排序</option>
                 <option value="time">按時間排序</option>
               </select>
-              <button class="btn btn-outline btn-sm" @click="clearAllQuestions">清空所有</button>
+              <button class="btn btn-outline btn-sm" @click="clearAllQuestions" :title="`清空主題「${topics[selectedTopicIndex]?.title || ''}」的所有評論`">
+                <i class="fa-solid fa-trash-can"></i>
+                清空評論
+              </button>
             </div>
           </div>
           <div class="questions-container">
@@ -117,7 +120,7 @@
                 :class="{ 'question-answered': q.answered }"
               >
                 <div class="question-header">
-                  <div class="question-text" v-html="escapeHtml(q.text)"></div>
+                  <div class="question-text" v-html="escapeHtml(q.content)"></div>
                   <div class="question-actions">
                     <button class="btn-icon" @click="toggleAnswered(q.id)" :title="q.answered ? '標記為未回答' : '標記為已回答'">
                       <i v-if="q.answered" class="fa-solid fa-circle-check"></i>
@@ -130,10 +133,15 @@
                 </div>
                 <div class="question-meta">
                   <div class="question-votes">
-                    <i class="fa-solid fa-thumbs-up"></i> {{ q.votes || 0 }}
+                    <span class="vote-item">
+                      <i class="fa-solid fa-thumbs-up"></i> {{ q.vote_good || 0 }}
+                    </span>
+                    <span class="vote-item">
+                      <i class="fa-solid fa-thumbs-down"></i> {{ q.vote_bad || 0 }}
+                    </span>
                   </div>
                   <div class="question-time">
-                    {{ formatTime(q.createdAt) }}
+                    {{ formatTime(q.ts) }}
                   </div>
                 </div>
               </div>
@@ -301,9 +309,10 @@
 <script setup>
 import { ref, reactive, computed, onMounted, watch, onBeforeUnmount } from 'vue'
 import QrcodeVue from 'qrcode.vue'
+import { useRouter } from 'vue-router'
 
 // API 基礎 URL 設定
-const API_BASE_URL = 'http://localhost:8000' // 根據實際後端服務的地址和端口進行調整
+const API_BASE_URL = `${window.location.protocol}//${window.location.hostname}:8000`  // 根據實際後端服務的地址和端口進行調整
 
 // 狀態
 const room = ref(null)
@@ -315,6 +324,7 @@ const sortBy = ref('votes')
 const notifications = ref([])
 const isQRCodeModalVisible = ref(false)
 const qrcodeSize = ref(window.innerWidth < 768 ? 320 : 640)
+const router = useRouter()
 
 // 計時器相關
 const remainingTime = ref(0) // 剩餘時間（以秒為單位）
@@ -331,14 +341,14 @@ const timerSettings = reactive({
 // 側邊欄與主題相關
 const isSidebarCollapsed = ref(false)
 const topics = ref([
-  { title: '主題1', content: '', timestamp: new Date().toISOString() }
+  { title: '主題 1', content: '', timestamp: new Date().toISOString() }
 ])
 const selectedTopicIndex = ref(0)
 const editingTopicIndex = ref(null)
 const editingTopicName = ref('')
 
 // 統計
-const totalVotes = computed(() => questions.value.reduce((sum, q) => sum + (q.votes || 0), 0))
+const totalVotes = computed(() => questions.value.reduce((sum, q) => sum + (q.vote_good || 0) + (q.vote_bad || 0), 0))
 
 // 分享連結
 const roomLink = computed(() => {
@@ -362,7 +372,20 @@ const roomStatusText = computed(() => {
 const sortedQuestions = computed(() => {
   const arr = [...questions.value]
   if (sortBy.value === 'votes') {
-    return arr.sort((a, b) => (b.votes || 0) - (a.votes || 0))
+    return arr.sort((a, b) => {
+      const aGood = a.vote_good || 0
+      const bGood = b.vote_good || 0
+      const aBad = a.vote_bad || 0
+      const bBad = b.vote_bad || 0
+      
+      // 先按讚數由大到小排序
+      if (bGood !== aGood) {
+        return bGood - aGood
+      }
+      
+      // 讚數相同時，按倒讚數由小到大排序
+      return aBad - bBad
+    })
   }
   return arr.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
 })
@@ -372,8 +395,10 @@ function loadRoom() {
   const urlParams = new URLSearchParams(window.location.search)
   const code = urlParams.get('room')
   if (!code) {
-    alert('無效的會議室代碼')
-    window.location.href = 'index.html'
+    showNotification('無效的會議室代碼', 'error')
+    setTimeout(() => {
+      router.push('/')
+    }, 2000)
     return
   }
   roomCode.value = code
@@ -385,8 +410,8 @@ function loadRoom() {
       const rooms = new Map(JSON.parse(roomsData))
       const r = rooms.get(code)
       if (!r) {
-        alert('找不到該會議室')
-        window.location.href = 'index.html'
+        showNotification('本地找不到該會議室，將檢查服務器狀態', 'info')
+        // 不在這裡直接返回，讓後續的 API 檢查來決定
         return
       }
       room.value = r
@@ -399,14 +424,21 @@ function loadRoom() {
       }
     }
   } catch (e) {
-    alert('載入會議室失敗')
-    window.location.href = 'index.html'
+    console.error('載入會議室失敗:', e)
+    showNotification('載入會議室失敗', 'error')
+    // 不在這裡直接返回，讓後續的 API 檢查來決定
   }
 }
 
 // 寫回 localStorage
 function saveRoom() {
   try {
+    // 檢查 room.value 和 roomCode.value 是否存在
+    if (!room.value || !roomCode.value) {
+      console.warn('房間資料或房間代碼不存在，跳過保存')
+      return
+    }
+    
     const roomsData = localStorage.getItem('Sync_AI_rooms')
     const rooms = new Map(roomsData ? JSON.parse(roomsData) : [])
     room.value.questions = questions.value
@@ -417,6 +449,29 @@ function saveRoom() {
     localStorage.setItem('Sync_AI_rooms', JSON.stringify(Array.from(rooms.entries())))
   } catch (e) {
     console.error('保存房間資料失敗:', e)
+  }
+}
+
+// 獲取問題列表
+async function fetchQuestions() {
+  if (!roomCode.value) return
+  
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/room_comments?room=${roomCode.value}`)
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.status}`)
+    }
+    
+    const resp = await response.json()
+    const data = resp["comments"] || []
+    questions.value = data || []
+    
+    // 只有在 room.value 存在時才更新 localStorage 中的房間資料
+    if (room.value) {
+      saveRoom()
+    }
+  } catch (error) {
+    console.error('獲取問題列表失敗:', error)
   }
 }
 
@@ -435,11 +490,57 @@ function deleteQuestion(id) {
     saveRoom()
   }
 }
-function clearAllQuestions() {
+
+async function clearAllQuestions() {
   if (confirm('確定要清空所有問題嗎？此操作無法復原。')) {
-    questions.value = []
-    room.value.questions = []
-    saveRoom()
+    // 獲取當前主題名稱
+    const currentTopic = topics.value[selectedTopicIndex.value]?.title
+    
+    if (!currentTopic) {
+      showNotification('未選擇主題，無法清空問題', 'error')
+      return
+    }
+    
+    try {
+      // 調用刪除主題評論的 API
+      const response = await fetch(`${API_BASE_URL}/api/room_topic_comments`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          room: roomCode.value,
+          topic: currentTopic
+        })
+      })
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`)
+      }
+      
+      const result = await response.json()
+      
+      if (result.success) {
+        // 清空本地問題列表
+        questions.value = []
+        if (room.value) {
+          room.value.questions = []
+          saveRoom()
+        }
+        
+        // 顯示詳細的清空結果
+        const message = `已清空主題「${result.topic}」的所有內容：刪除了 ${result.deleted_comments_count} 個評論和 ${result.deleted_votes_count} 個投票記錄`
+        showNotification(message, 'success')
+        
+        // 重新獲取問題列表以確保同步
+        await fetchQuestions()
+      } else {
+        showNotification(result.error || '清空問題失敗', 'error')
+      }
+    } catch (error) {
+      console.error('清空問題失敗:', error)
+      showNotification('清空問題失敗，請稍後再試', 'error')
+    }
   }
 }
 
@@ -463,7 +564,7 @@ async function endRoom() {
       }
       
       showNotification('會議已結束，房間已關閉', 'success')
-      setTimeout(() => {window.location.href = window.location.origin;}, 2000)
+      setTimeout(() => {router.push('/');}, 2000)
     } catch (error) {
       console.error('結束會議失敗:', error)
       showNotification('結束會議失敗，請稍後再試', 'error')
@@ -523,7 +624,7 @@ const copyRoomLink = async () => {
 
 // 工具
 function formatTime(dateString) {
-  const date = new Date(dateString)
+  const date = new Date(dateString*1000)
   const now = new Date()
   const diff = now - date
   if (diff < 60000) return '剛剛'
@@ -562,12 +663,19 @@ function toggleSidebar() {
   localStorage.setItem('sidebarCollapsed', isSidebarCollapsed.value.toString())
 }
 
-function selectTopic(index) {
+async function selectTopic(index) {
   selectedTopicIndex.value = index
   
-  // 如果計時器已經運行，切換主題時也更新到參與者面板
-  if (timerRunning.value) {
-    setRoomState()
+  // 使用新的切換主題API
+  const currentTopic = topics.value[index].title
+  try {
+    const success = await switchTopic(currentTopic)
+    if (success) {
+      // 切換成功後，立即獲取新主題的評論
+      await fetchQuestions()
+    }
+  } catch (error) {
+    console.error('切換主題時更新資料失敗:', error)
   }
 }
 
@@ -582,10 +690,59 @@ function startEditTopic(index) {
   }, 50)
 }
 
-function saveTopicEdit() {
+async function saveTopicEdit() {
   if (editingTopicIndex.value !== null && editingTopicName.value.trim()) {
-    topics.value[editingTopicIndex.value].title = editingTopicName.value.trim()
-    saveTopics()
+    const oldTopicName = topics.value[editingTopicIndex.value].title
+    const newTopicName = editingTopicName.value.trim()
+    
+    // 如果名稱沒有改變，直接退出編輯模式
+    if (oldTopicName === newTopicName) {
+      editingTopicIndex.value = null
+      editingTopicName.value = ''
+      return
+    }
+    
+    try {
+      // 使用新的 rename_topic API
+      const response = await fetch(`${API_BASE_URL}/api/room_rename_topic`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          room: roomCode.value,
+          old_topic: oldTopicName,
+          new_topic: newTopicName
+        })
+      })
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`)
+      }
+      
+      const result = await response.json()
+      
+      if (result.success) {
+        // 更新本地主題列表
+        topics.value[editingTopicIndex.value].title = newTopicName
+        saveTopics()
+        
+        // 如果重命名的是當前主題，刷新問題列表
+        if (result.is_current_topic) {
+          await fetchQuestions()
+        }
+        
+        showNotification(`主題已重新命名為「${newTopicName}」`, 'success')
+      } else {
+        showNotification(result.error || '重新命名主題失敗', 'error')
+        return
+      }
+    } catch (error) {
+      console.error('重新命名主題失敗:', error)
+      showNotification('重新命名主題失敗，請稍後再試', 'error')
+      return
+    }
+    
     editingTopicIndex.value = null
     editingTopicName.value = ''
   }
@@ -596,15 +753,25 @@ function cancelTopicEdit() {
   editingTopicName.value = ''
 }
 
-function addNewTopic() {
+async function addNewTopic() {
+  const newTopicTitle = `主題 ${topics.value.length + 1}`
   topics.value.push({
-    title: `主題 ${topics.value.length + 1}`,
+    title: newTopicTitle,
     content: '',
     timestamp: new Date().toISOString()
   })
   // 選擇新添加的主題
-  selectedTopicIndex.value = topics.value.length - 1
+  const newIndex = topics.value.length - 1
+  selectedTopicIndex.value = newIndex
   saveTopics()
+  
+  // 自動切換到新主題
+  try {
+    await switchTopic(newTopicTitle)
+    await fetchQuestions()
+  } catch (error) {
+    console.error('切換到新主題失敗:', error)
+  }
 }
 
 function exportAllTopics() {
@@ -903,6 +1070,40 @@ async function setRoomStatus(status) {
   }
 }
 
+// 新增的切換主題API函數
+async function switchTopic(topicName) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/room_switch_topic`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        room: roomCode.value,
+        topic: topicName
+      })
+    })
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.status}`)
+    }
+    
+    const data = await response.json()
+    if (data.success) {
+      showNotification(`已切換到主題：${topicName}`, 'success')
+      // 更新房間狀態
+      roomStatus.value = data.status
+      return true
+    } else {
+      throw new Error(data.error || '切換主題失敗')
+    }
+  } catch (error) {
+    console.error('切換主題失敗:', error)
+    showNotification('切換主題失敗', 'error')
+    return false
+  }
+}
+
 // 主題和計時相關的API函數
 async function setRoomState() {
   if (!topics.value[selectedTopicIndex.value]) {
@@ -928,9 +1129,6 @@ async function setRoomState() {
       throw new Error(`HTTP error! Status: ${response.status}`)
     }
     
-    // 若成功設置狀態，則自動將房間狀態改為 Discussion
-    await setRoomStatus('Discussion')
-    
     showNotification('主題和計時器已同步到參與者面板', 'success')
   } catch (error) {
     console.error('設置房間狀態失敗:', error)
@@ -940,7 +1138,7 @@ async function setRoomState() {
 
 let roomPoller
 let dataPoller
-onMounted(() => {
+onMounted(async () => {
   loadRoom()
   loadTopics()
   loadTimerSettings() // 載入計時器設置
@@ -948,8 +1146,21 @@ onMounted(() => {
   // 添加窗口大小變化的監聽器
   window.addEventListener('resize', updateQRCodeSize)
   
-  // 初始化獲取房間狀態
-  fetchRoomStatus()
+  // 首次檢查房間狀態，如果房間不存在則返回主頁
+  const initialStatus = await fetchRoomStatus()
+  if (initialStatus === 'NotFound') {
+    showNotification('房間不存在，即將返回主頁', 'error')
+    setTimeout(() => {
+      router.push('/')
+    }, 2000)
+    return
+  }
+  
+  // 延遲啟動問題輪詢，確保 loadRoom() 先完成
+  setTimeout(() => {
+    fetchQuestions() // 首次獲取
+    dataPoller = setInterval(fetchQuestions, 5000)
+  }, 100)
 })
 
 onBeforeUnmount(() => {
@@ -1435,17 +1646,6 @@ onBeforeUnmount(() => {
   }
 }
 
-@keyframes modalSlideIn {
-  from { 
-    opacity: 0;
-    transform: translateX(30px);
-  }
-  to { 
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
 /* 計時器樣式 */
 .timer-display {
   display: flex;
@@ -1685,5 +1885,12 @@ onBeforeUnmount(() => {
 .btn-outline:hover {
   background: var(--surface);
   color: var(--text-primary);
+}
+
+/* 票數顯示樣式 */
+.question-votes {
+  display: flex;
+  gap: 12px;
+  align-items: center;
 }
 </style>
