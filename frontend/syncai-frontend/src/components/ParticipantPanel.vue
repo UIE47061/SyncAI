@@ -9,6 +9,12 @@
         </div>
         <div class="nav-actions">
           <span class="room-info room-code">代碼: <strong>{{ roomCode || '------' }}</strong></span>
+          <!-- 用戶暱稱顯示 -->
+          <div class="user-nickname" @click="openNicknameEditModal" title="點擊修改暱稱">
+            <i class="fa-solid fa-user"></i>
+            <span>{{ currentNickname || '載入中...' }}</span>
+            <i class="fa-solid fa-pen edit-icon"></i>
+          </div>
           <div class="status-indicator" :class="'status-' + roomStatus.toLowerCase()">
             <i class="status-icon" :class="statusIcon"></i>
             {{ roomStatusText }}
@@ -51,11 +57,14 @@
             <!-- 提問面板 -->
             <div class="question-submit-section">
               <form @submit.prevent="submitQuestion">
-                <input 
+                <textarea 
                   v-model="newQuestion" 
                   placeholder="請輸入您的意見..." 
                   :disabled="roomStatus !== 'Discussion'"
-                />
+                  rows="3"
+                  @keydown.ctrl.enter="submitQuestion"
+                  @keydown.meta.enter="submitQuestion"
+                ></textarea>
                 <button 
                   type="submit" 
                   class="btn btn-primary" 
@@ -142,11 +151,76 @@
         <button @click="removeNotification(i)">&times;</button>
       </div>
     </TransitionGroup>
+
+    <!-- 取名視窗 -->
+    <div v-if="showNameModal" class="name-modal-overlay" @click.self="useAnonymous">
+      <div class="name-modal">
+        <div class="name-modal-header">
+          <h3>歡迎加入會議室</h3>
+          <p>請輸入您的暱稱，或選擇以匿名身份參與</p>
+        </div>
+        <div class="name-modal-body">
+          <div class="nickname-input-group">
+            <input 
+              v-model="userNickname" 
+              @keyup.enter="confirmNickname"
+              @keyup.esc="useAnonymous"
+              placeholder="輸入您的暱稱..."
+              class="nickname-input"
+              maxlength="10"
+              ref="nicknameInput"
+            />
+            <div class="input-hint">最多 10 個字元</div>
+          </div>
+          <div class="name-modal-actions">
+            <button @click="confirmNickname" class="btn btn-primary">
+              <i class="fa-solid fa-check"></i>
+              {{ userNickname.trim() ? '使用此暱稱' : '匿名參與' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 暱稱編輯視窗 -->
+    <div v-if="showNicknameEditModal" class="nickname-edit-modal-overlay" @click.self="closeNicknameEditModal">
+      <div class="nickname-edit-modal">
+        <div class="nickname-edit-modal-header">
+          <h3>修改暱稱</h3>
+          <button class="btn-close" @click="closeNicknameEditModal">&times;</button>
+        </div>
+        <div class="nickname-edit-modal-body">
+          <div class="nickname-edit-input-group">
+            <label for="nicknameEdit">新暱稱</label>
+            <input 
+              id="nicknameEdit"
+              v-model="newNicknameInput" 
+              @keyup.enter="confirmNicknameEdit"
+              @keyup.esc="closeNicknameEditModal"
+              placeholder="輸入新的暱稱..."
+              class="nickname-edit-input"
+              maxlength="10"
+            />
+            <div class="input-hint">最多 10 個字元，留空則自動產生匿名名稱</div>
+          </div>
+          <div class="nickname-edit-modal-actions">
+            <button @click="confirmNicknameEdit" class="btn btn-primary">
+              <i class="fa-solid fa-check"></i>
+              確認修改
+            </button>
+            <button @click="closeNicknameEditModal" class="btn btn-outline">
+              <i class="fa-solid fa-xmark"></i>
+              取消
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, computed, onBeforeUnmount } from 'vue'
+import { ref, onMounted, computed, onBeforeUnmount, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import QrcodeVue from 'qrcode.vue'
 
@@ -165,6 +239,16 @@ const currentTopic = ref('')
 const remainingTime = ref(0)
 const votedQuestions = ref({ good: new Set(), bad: new Set() })
 const questionSort = ref('latest')
+
+// 取名相關狀態
+const showNameModal = ref(false)
+const userNickname = ref('')
+
+// 暱稱編輯相關狀態
+const showNicknameEditModal = ref(false)
+const currentNickname = ref('')
+const newNicknameInput = ref('')
+const roomNicknameKey = `nickname_${roomCode.value}`
 
 // 計算屬性
 const canSubmit = computed(() => !!newQuestion.value.trim() && roomStatus.value === 'Discussion')
@@ -242,7 +326,7 @@ onMounted(async () => {
   // 初始檢查房間狀態
   const initialStatus = await fetchRoomStatus()
   
-  // 如果房間不存在，顯示提示並返回主頁
+  // 如果房間不存在，顯示提示並返回主頁，不顯示取名視窗
   if (initialStatus === 'NotFound') {
     showNotification('該房間尚未建立，即將返回主頁！', 'error')
     setTimeout(() => {
@@ -251,6 +335,9 @@ onMounted(async () => {
     return
   }
   
+  // 房間存在時才檢查是否需要顯示取名視窗
+  await checkAndShowNameModal()
+
   // 繼續加載其他數據
   await Promise.all([
     fetchQuestions(),
@@ -259,9 +346,6 @@ onMounted(async () => {
   
   // 設置定時輪詢
   startPolling()
-  
-  // 註冊心跳服務（保持參與者在線狀態）
-  registerHeartbeat()
 })
 
 // 開始數據輪詢
@@ -287,6 +371,8 @@ function startPolling() {
 // 清理輪詢器
 onBeforeUnmount(() => {
   clearAllPolling()
+  // 確保恢復頁面滾動
+  document.body.style.overflow = ''
 })
 
 // 清理所有輪詢
@@ -296,6 +382,166 @@ function clearAllPolling() {
   clearInterval(statePoller)
   clearInterval(heartbeatPoller)
   clearInterval(localTimerPoller)
+}
+
+// 檢查是否需要顯示取名視窗
+async function checkAndShowNameModal() {
+  // 檢查是否已有該房間的暱稱記錄
+  const savedNickname = localStorage.getItem(roomNicknameKey)
+  
+  if (!savedNickname) {
+    // 首次進入此房間，顯示取名視窗
+    showNameModal.value = true
+    // 阻止背景滾動
+    document.body.style.overflow = 'hidden'
+    // 等待 DOM 更新後聚焦到輸入框
+    await nextTick()
+    const input = document.querySelector('.nickname-input')
+    if (input) {
+      input.focus()
+    }
+    // 等待使用者取名，不立即註冊心跳服務
+  } else {
+    // 已有暱稱記錄，直接使用並註冊心跳服務
+    currentNickname.value = savedNickname
+    registerHeartbeat()
+  }
+}
+
+// 開啟暱稱編輯視窗
+async function openNicknameEditModal() {
+  const nickname = localStorage.getItem(roomNicknameKey) || ''
+  currentNickname.value = nickname
+  newNicknameInput.value = nickname
+  showNicknameEditModal.value = true
+  // 阻止背景滾動
+  document.body.style.overflow = 'hidden'
+  // 等待 DOM 更新後聚焦到輸入框
+  await nextTick()
+  const input = document.querySelector('.nickname-edit-input')
+  if (input) {
+    input.focus()
+    input.select() // 選中所有文字
+  }
+}
+
+// 確認暱稱修改
+async function confirmNicknameEdit() {
+  const trimmedName = newNicknameInput.value.trim()
+  let finalNickname = ''
+  
+  if (trimmedName) {
+    finalNickname = trimmedName
+  } else {
+    // 使用匿名（隨機訪客）
+    finalNickname = `訪客${Math.floor(Math.random() * 10000)}`
+  }
+  
+  // 如果暱稱沒有改變，直接關閉
+  if (finalNickname === currentNickname.value) {
+    closeNicknameEditModal()
+    return
+  }
+  
+  try {
+    const deviceId = localStorage.getItem('device_id')
+    if (!deviceId) {
+      showNotification('設備ID不存在，請重新載入頁面', 'error')
+      return
+    }
+    
+    // 調用 API 更新暱稱
+    const response = await fetch(`${API_BASE_URL}/api/participants/update_nickname`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        room: roomCode.value,
+        device_id: deviceId,
+        old_nickname: currentNickname.value,
+        new_nickname: finalNickname
+      })
+    })
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.status}`)
+    }
+    
+    const result = await response.json()
+    
+    if (result.success) {
+      // 更新本地存儲和顯示
+      localStorage.setItem(roomNicknameKey, finalNickname)
+      currentNickname.value = finalNickname
+      
+      // 關閉視窗
+      closeNicknameEditModal()
+      
+      // 顯示成功訊息
+      const message = result.updated_comments_count > 0 
+        ? `暱稱已更新為「${finalNickname}」，同時更新了 ${result.updated_comments_count} 則留言`
+        : `暱稱已更新為「${finalNickname}」`
+      
+      showNotification(message, 'success')
+      
+      // 重新獲取意見列表以同步更新
+      await fetchQuestions()
+    } else {
+      showNotification(result.error || '更新暱稱失敗', 'error')
+    }
+  } catch (error) {
+    console.error('更新暱稱失敗:', error)
+    showNotification('更新暱稱失敗，請稍後再試', 'error')
+  }
+}
+
+// 關閉暱稱編輯視窗
+function closeNicknameEditModal() {
+  showNicknameEditModal.value = false
+  document.body.style.overflow = ''
+  newNicknameInput.value = ''
+}
+
+// 確認暱稱
+function confirmNickname() {
+  const trimmedName = userNickname.value.trim()
+  let finalNickname = ''
+  
+  if (trimmedName) {
+    finalNickname = trimmedName
+  } else {
+    // 使用匿名（隨機訪客）
+    finalNickname = `訪客${Math.floor(Math.random() * 10000)}`
+  }
+  
+  // 同時保存該房間的暱稱記錄
+  localStorage.setItem(roomNicknameKey, finalNickname)
+  
+  // 更新當前暱稱顯示
+  currentNickname.value = finalNickname
+  
+  // 關閉視窗
+  showNameModal.value = false
+  
+  // 恢復頁面滾動
+  document.body.style.overflow = ''
+  
+  // 顯示確認訊息
+  if (trimmedName) {
+    showNotification(`歡迎，${finalNickname}！`, 'success')
+  } else {
+    showNotification(`以匿名身份進入會議室`, 'info')
+  }
+  
+  // 取名完成後，註冊心跳服務
+  registerHeartbeat()
+}
+
+// 使用匿名身份
+function useAnonymous() {
+  userNickname.value = '' // 清空輸入
+  confirmNickname() // 執行確認邏輯
 }
 
 // 註冊心跳服務
@@ -316,9 +562,14 @@ async function joinRoom(deviceId) {
   if (!roomCode.value) return
   
   try {
-    const nickname = localStorage.getItem('nickname') || `訪客${Math.floor(Math.random() * 10000)}`
-    localStorage.setItem('nickname', nickname)
+    const nickname = localStorage.getItem(roomNicknameKey)
     
+    // 確保有暱稱才加入房間
+    if (!nickname) {
+      console.error('沒有暱稱無法加入房間')
+      return
+    }
+
     const response = await fetch(`${API_BASE_URL}/api/participants/join`, {
       method: 'POST',
       headers: {
@@ -385,9 +636,11 @@ async function fetchRoomStatus() {
   }
 }
 
-// 獲取房間主題和計時器狀態
+// 獲取房間主題、計時器狀態、名稱
 async function fetchRoomState() {
   if (!roomCode.value) return
+
+  currentNickname.value = localStorage.getItem(roomNicknameKey) || '匿名'
   
   try {
     const response = await fetch(`${API_BASE_URL}/api/room_state?room=${roomCode.value}`)
@@ -521,7 +774,7 @@ async function submitQuestion() {
   
   try {
     const deviceId = localStorage.getItem('device_id')
-    const nickname = localStorage.getItem('nickname') || '匿名'
+    const nickname = localStorage.getItem(roomNicknameKey) || '匿名'
     
     const response = await fetch(`${API_BASE_URL}/api/room_comment`, {
       method: 'POST',
@@ -796,7 +1049,7 @@ function goHome() {
   gap: 14px;
 }
 
-.question-submit-section input {
+.question-submit-section textarea {
   border-radius: 0.75rem;
   padding: 12px 16px;
   border: 1px solid var(--border);
@@ -804,16 +1057,20 @@ function goHome() {
   color: var(--text-primary);
   font-size: 1rem;
   transition: all 0.2s ease;
+  resize: vertical;
+  min-height: 80px;
+  font-family: inherit;
+  line-height: 1.5;
 }
 
-.question-submit-section input:focus {
+.question-submit-section textarea:focus {
   border-color: var(--primary-color);
   outline: none;
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
   background: var(--background);
 }
 
-.question-submit-section input::placeholder {
+.question-submit-section textarea::placeholder {
   color: var(--text-secondary);
 }
 
@@ -881,7 +1138,6 @@ function goHome() {
   color: var(--text-primary);
   min-width: 0;
   grid-column: 1 / -1;
-  max-height: 600px;
   overflow-y: auto;
   transition: all 0.3s ease;
 }
@@ -909,7 +1165,6 @@ function goHome() {
 
 .question-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 16px;
   margin-top: 20px;
 }
@@ -1003,6 +1258,7 @@ function goHome() {
   margin: 12px 0;
   line-height: 1.6;
   word-break: break-word;
+  white-space: pre-wrap;
   color: var(--text-primary);
   font-size: 1rem;
 }
@@ -1159,6 +1415,431 @@ function goHome() {
   .vote-button {
     padding: 5px 10px;
     font-size: 0.85rem;
+  }
+}
+
+/* 取名視窗樣式 */
+.name-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 3000;
+  backdrop-filter: blur(8px);
+  animation: fadeIn 0.3s ease;
+}
+
+.name-modal {
+  background: var(--background);
+  border-radius: 1.25rem;
+  width: 90%;
+  max-width: 480px;
+  box-shadow: var(--shadow-lg);
+  animation: modalSlideUp 0.3s ease;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.name-modal-header {
+  padding: 2rem 2rem 1rem 2rem;
+  text-align: center;
+  background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-hover) 100%);
+  color: white;
+  position: relative;
+}
+
+.name-modal-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(45deg, rgba(255, 255, 255, 0.1) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.name-modal-header h3 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0 0 0.5rem 0;
+  position: relative;
+  z-index: 1;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.name-modal-header p {
+  font-size: 1rem;
+  margin: 0;
+  opacity: 0.95;
+  position: relative;
+  z-index: 1;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.name-modal-body {
+  padding: 2rem;
+}
+
+.nickname-input-group {
+  margin-bottom: 1.5rem;
+}
+
+.nickname-input {
+  width: 100%;
+  padding: 1rem 1.25rem;
+  border-radius: 0.75rem;
+  border: 2px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: 1.1rem;
+  transition: all 0.3s ease;
+  box-sizing: border-box;
+}
+
+.nickname-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.15);
+  background: var(--background);
+}
+
+.nickname-input::placeholder {
+  color: var(--text-secondary);
+}
+
+.input-hint {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin-top: 0.5rem;
+  text-align: center;
+}
+
+.name-modal-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.name-modal-actions .btn {
+  padding: 0.875rem 1.5rem;
+  border-radius: 0.75rem;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: none;
+}
+
+.name-modal-actions .btn-primary {
+  background: var(--primary-color);
+  color: white;
+  box-shadow: var(--shadow);
+}
+
+.name-modal-actions .btn-primary:hover {
+  background: var(--primary-hover);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+.name-modal-actions .btn-outline {
+  background: transparent;
+  border: 2px solid var(--border);
+  color: var(--text-secondary);
+}
+
+.name-modal-actions .btn-outline:hover {
+  background: var(--surface);
+  color: var(--text-primary);
+  border-color: var(--text-secondary);
+}
+
+@keyframes fadeIn {
+  from { 
+    opacity: 0; 
+  }
+  to { 
+    opacity: 1; 
+  }
+}
+
+@keyframes modalSlideUp {
+  from { 
+    opacity: 0;
+    transform: translateY(30px) scale(0.95);
+  }
+  to { 
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* 響應式設計 - 取名視窗 */
+@media (max-width: 480px) {
+  .name-modal {
+    width: 95%;
+    margin: 1rem;
+  }
+  
+  .name-modal-header {
+    padding: 1.5rem 1.5rem 1rem 1.5rem;
+  }
+  
+  .name-modal-header h3 {
+    font-size: 1.3rem;
+  }
+  
+  .name-modal-header p {
+    font-size: 0.95rem;
+  }
+  
+  .name-modal-body {
+    padding: 1.5rem;
+  }
+  
+  .nickname-input {
+    padding: 0.875rem 1rem;
+    font-size: 1rem;
+  }
+}
+
+/* 用戶暱稱顯示樣式 */
+.user-nickname {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  padding: 8px 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  position: relative;
+  max-width: 200px;
+}
+
+.user-nickname:hover {
+  background: var(--background);
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow);
+}
+
+.user-nickname span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1;
+}
+
+.user-nickname .edit-icon {
+  opacity: 0.6;
+  font-size: 0.75rem;
+  transition: all 0.2s ease;
+}
+
+.user-nickname:hover .edit-icon {
+  opacity: 1;
+  color: var(--primary-color);
+}
+
+/* 暱稱編輯視窗樣式 */
+.nickname-edit-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 3000;
+  backdrop-filter: blur(8px);
+  animation: fadeIn 0.3s ease;
+}
+
+.nickname-edit-modal {
+  background: var(--background);
+  border-radius: 1rem;
+  width: 90%;
+  max-width: 450px;
+  box-shadow: var(--shadow-lg);
+  animation: modalSlideUp 0.3s ease;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.nickname-edit-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem 2rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.nickname-edit-modal-header h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.btn-close {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--text-secondary);
+  padding: 0.2rem;
+  border-radius: 0.25rem;
+  transition: all 0.2s;
+}
+
+.btn-close:hover {
+  background: var(--border);
+  color: var(--text-primary);
+}
+
+.nickname-edit-modal-body {
+  padding: 2rem;
+}
+
+.nickname-edit-input-group {
+  margin-bottom: 1.5rem;
+}
+
+.nickname-edit-input-group label {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+
+.nickname-edit-input {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  border-radius: 0.5rem;
+  border: 2px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: 1rem;
+  transition: all 0.3s ease;
+  box-sizing: border-box;
+}
+
+.nickname-edit-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+  background: var(--background);
+}
+
+.nickname-edit-input::placeholder {
+  color: var(--text-secondary);
+}
+
+.nickname-edit-modal-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+}
+
+.nickname-edit-modal-actions .btn {
+  padding: 0.75rem 1.25rem;
+  border-radius: 0.5rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: none;
+}
+
+.nickname-edit-modal-actions .btn-primary {
+  background: var(--primary-color);
+  color: white;
+}
+
+.nickname-edit-modal-actions .btn-primary:hover {
+  background: var(--primary-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow);
+}
+
+.nickname-edit-modal-actions .btn-outline {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+
+.nickname-edit-modal-actions .btn-outline:hover {
+  background: var(--surface);
+  color: var(--text-primary);
+  border-color: var(--text-secondary);
+}
+
+/* 響應式設計 - 暱稱相關 */
+@media (max-width: 768px) {
+  .user-nickname {
+    max-width: 150px;
+    padding: 6px 12px;
+    font-size: 0.85rem;
+  }
+  
+  .nickname-edit-modal {
+    width: 95%;
+    margin: 1rem;
+  }
+  
+  .nickname-edit-modal-header {
+    padding: 1.25rem 1.5rem;
+  }
+  
+  .nickname-edit-modal-body {
+    padding: 1.5rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .user-nickname {
+    max-width: 120px;
+    padding: 5px 10px;
+    font-size: 0.8rem;
+  }
+  
+  .nav-actions {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  
+  .nickname-edit-modal-actions {
+    flex-direction: column;
+  }
+  
+  .nickname-edit-modal-actions .btn {
+    width: 100%;
+    justify-content: center;
   }
 }
 </style>

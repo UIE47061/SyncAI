@@ -96,7 +96,7 @@
                 <option value="votes">按票數排序</option>
                 <option value="time">按時間排序</option>
               </select>
-              <button class="btn btn-outline btn-sm" @click="clearAllQuestions" :title="`清空主題「${topics[selectedTopicIndex]?.title || ''}」的所有評論`">
+              <button class="btn-red btn-qrcode" @click="clearAllQuestions" :title="`清空主題「${topics[selectedTopicIndex]?.title || ''}」的所有評論`">
                 <i class="fa-solid fa-trash-can"></i>
                 清空評論
               </button>
@@ -117,15 +117,10 @@
                 v-for="q in sortedQuestions"
                 :key="q.id"
                 class="question-item"
-                :class="{ 'question-answered': q.answered }"
               >
                 <div class="question-header">
                   <div class="question-text" v-html="escapeHtml(q.content)"></div>
                   <div class="question-actions">
-                    <button class="btn-icon" @click="toggleAnswered(q.id)" :title="q.answered ? '標記為未回答' : '標記為已回答'">
-                      <i v-if="q.answered" class="fa-solid fa-circle-check"></i>
-                      <i v-else class="fa-regular fa-circle"></i>
-                    </button>
                     <button class="btn-icon" @click="deleteQuestion(q.id)" title="刪除意見">
                       <i class="fa-solid fa-trash-can"></i>
                     </button>
@@ -140,8 +135,13 @@
                       <i class="fa-solid fa-thumbs-down"></i> {{ q.vote_bad || 0 }}
                     </span>
                   </div>
-                  <div class="question-time">
-                    {{ formatTime(q.ts) }}
+                  <div class="question-info">
+                    <div class="question-nickname" v-if="q.nickname">
+                      <i class="fa-regular fa-user"></i> {{ q.nickname }}
+                    </div>
+                    <div class="question-time">
+                      {{ formatTime(q.ts) }}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -476,13 +476,6 @@ async function fetchQuestions() {
 }
 
 // 意見操作
-function toggleAnswered(id) {
-  const q = questions.value.find(q => q.id === id)
-  if (q) {
-    q.answered = !q.answered
-    saveRoom()
-  }
-}
 function deleteQuestion(id) {
   if (confirm('確定要刪除這個意見嗎？')) {
     questions.value = questions.value.filter(q => q.id !== id)
@@ -635,7 +628,8 @@ function escapeHtml(text) {
   // Vue 自動 escape，不過保留此函式相容
   const div = document.createElement('div')
   div.textContent = text
-  return div.innerHTML
+  // 處理換行符號，將 \n 轉換為 <br>
+  return div.innerHTML.replace(/\n/g, '<br>')
 }
 
 // QR Code 彈窗控制
@@ -1185,7 +1179,7 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: auto 1fr 350px;
   gap: 1.5rem;
-  height: calc(100vh - 200px);
+  height: calc(100vh - 70px - 6rem - 1px);
 }
 
 /* 通用面板樣式 */
@@ -1506,6 +1500,14 @@ onBeforeUnmount(() => {
 .btn-qrcode:hover {
   background: var(--primary-hover);
   color: white;
+}
+
+.btn-red {
+  background: #ef4444; /* Red */
+}
+
+.btn-red:hover {
+  background: #dc2626; /* Darker Red */
 }
 
 .qrcode-modal-overlay {
@@ -1888,5 +1890,55 @@ onBeforeUnmount(() => {
   display: flex;
   gap: 12px;
   align-items: center;
+}
+
+/* 意見資訊樣式 */
+.question-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-end;
+}
+
+.question-nickname {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.875rem;
+  color: var(--primary-color);
+  font-weight: 500;
+}
+
+.question-nickname i {
+  font-size: 0.875rem;
+  color: var(--primary-color);
+}
+
+.question-time {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+/* 調整 question-meta 布局 */
+.question-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-top: 12px;
+  gap: 16px;
+}
+
+/* 響應式調整 */
+@media (max-width: 768px) {
+  .question-meta {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .question-info {
+    align-items: flex-start;
+    width: 100%;
+  }
 }
 </style>

@@ -202,6 +202,12 @@ class DeleteTopicCommentsRequest(BaseModel):
     room: str
     topic: str
 
+class UpdateNicknameRequest(BaseModel):
+    room: str
+    device_id: str
+    old_nickname: str
+    new_nickname: str
+
 @router.post("/api/participants/heartbeat")
 def participant_heartbeat(data: HeartbeatRequest):
     """
@@ -871,6 +877,71 @@ def get_user_votes(room: str, device_id: str):
                             voted_bad.append(comment_id)
     
     return {"voted_good": voted_good, "voted_bad": voted_bad}
+
+@router.post("/api/participants/update_nickname")
+def update_participant_nickname(data: UpdateNicknameRequest):
+    """
+    更新參與者暱稱
+    
+    [POST] /api/participants/update_nickname
+    
+    描述：
+    更新指定參與者的暱稱，同時會更新該參與者在當前主題下所有留言的暱稱顯示。
+    
+    參數：
+    - room (str): 房間代碼
+    - device_id (str): 參與者裝置ID
+    - old_nickname (str): 舊暱稱
+    - new_nickname (str): 新暱稱
+    
+    回傳：
+    - success (bool): 是否成功更新暱稱
+    - new_nickname (str): 更新後的暱稱
+    - updated_comments_count (int): 更新的留言數量
+    """
+    room = data.room
+    device_id = data.device_id
+    old_nickname = data.old_nickname
+    new_nickname = data.new_nickname.strip()
+    
+    # 驗證輸入
+    if not new_nickname:
+        return {"success": False, "error": "暱稱不能為空"}
+    
+    if len(new_nickname) > 10:
+        return {"success": False, "error": "暱稱不能超過10個字元"}
+
+    if room not in ROOMS:
+        return {"success": False, "error": "房間不存在"}
+    
+    # 更新參與者列表中的暱稱
+    participant_found = False
+    if "participants_list" in ROOMS[room]:
+        for p in ROOMS[room]["participants_list"]:
+            if p['device_id'] == device_id:
+                p['nickname'] = new_nickname
+                participant_found = True
+                break
+    
+    if not participant_found:
+        return {"success": False, "error": "參與者不存在"}
+    
+    # 更新當前主題下該用戶所有留言的暱稱
+    updated_comments_count = 0
+    for topic in list(topics.keys()):
+        if topic.find(room) != -1:
+            topic_id = topic
+            for comment in topics[topic_id]["comments"]:
+                # 通過暱稱匹配更新（因為留言中沒有直接存儲device_id）
+                if comment["nickname"] == old_nickname:
+                    comment["nickname"] = new_nickname
+                    updated_comments_count += 1
+    
+    return {
+        "success": True,
+        "new_nickname": new_nickname,
+        "updated_comments_count": updated_comments_count
+    }
 
 @router.get("/api/all_rooms")
 def get_all_rooms():
