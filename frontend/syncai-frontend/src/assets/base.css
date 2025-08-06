@@ -1,86 +1,142 @@
-/* color palette from <https://github.com/vuejs/theme> */
+/* ===== Vue 官方主題色 + MeetQ 主題色一次搞定 ===== */
 :root {
+  /* Vue 官方配色 */
   --vt-c-white: #ffffff;
   --vt-c-white-soft: #f8f8f8;
   --vt-c-white-mute: #f2f2f2;
-
   --vt-c-black: #181818;
   --vt-c-black-soft: #222222;
   --vt-c-black-mute: #282828;
-
   --vt-c-indigo: #2c3e50;
-
   --vt-c-divider-light-1: rgba(60, 60, 60, 0.29);
   --vt-c-divider-light-2: rgba(60, 60, 60, 0.12);
   --vt-c-divider-dark-1: rgba(84, 84, 84, 0.65);
   --vt-c-divider-dark-2: rgba(84, 84, 84, 0.48);
-
   --vt-c-text-light-1: var(--vt-c-indigo);
   --vt-c-text-light-2: rgba(60, 60, 60, 0.66);
   --vt-c-text-dark-1: var(--vt-c-white);
   --vt-c-text-dark-2: rgba(235, 235, 235, 0.64);
-}
 
-/* semantic color variables for this project */
-:root {
+  /* SyncAI 主題色 */
+  --primary-color: #2563eb;
+  --primary-hover: #1d4ed8;
+  --secondary-color: #64748b;
+  --success-color: #059669;
+  --danger-color: #dc2626;
+
+  --background: #ffffff;
+  --surface: #f8fafc;
+  --border: #e2e8f0;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+
+  /* 讓官方和自訂的 class 都能抓到主題色 */
   --color-background: var(--vt-c-white);
   --color-background-soft: var(--vt-c-white-soft);
   --color-background-mute: var(--vt-c-white-mute);
-
   --color-border: var(--vt-c-divider-light-2);
   --color-border-hover: var(--vt-c-divider-light-1);
-
   --color-heading: var(--vt-c-text-light-1);
   --color-text: var(--vt-c-text-light-1);
-
   --section-gap: 160px;
+
+  --icon-default: #2563eb;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
+    --primary-color: #60a5fa;
+    --primary-hover: #2563eb;
+    --secondary-color: #a3a3a3;
+    --success-color: #34d399;
+    --danger-color: #ef4444;
+
+    --background: #181818;
+    --surface: #222;
+    --border: #393e46;
+    --text-primary: #f4f4f5;
+    --text-secondary: #cbd5e1;
+
     --color-background: var(--vt-c-black);
     --color-background-soft: var(--vt-c-black-soft);
     --color-background-mute: var(--vt-c-black-mute);
-
     --color-border: var(--vt-c-divider-dark-2);
     --color-border-hover: var(--vt-c-divider-dark-1);
-
     --color-heading: var(--vt-c-text-dark-1);
     --color-text: var(--vt-c-text-dark-2);
+
+    --icon-default: #b9d1ff;
   }
 }
 
+/* ========== Reset 與字體 ========== */
 *,
 *::before,
 *::after {
   box-sizing: border-box;
   margin: 0;
-  font-weight: normal;
+  /* font-weight: normal; */
 }
 
 body {
   min-height: 100vh;
   color: var(--color-text);
   background: var(--color-background);
-  transition:
-    color 0.5s,
-    background-color 0.5s;
+  transition: color 0.5s, background-color 0.5s;
   line-height: 1.6;
   font-family:
-    Inter,
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    Roboto,
-    Oxygen,
-    Ubuntu,
-    Cantarell,
-    'Fira Sans',
-    'Droid Sans',
-    'Helvetica Neue',
-    sans-serif;
+    'Noto Sans TC', Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    Oxygen, Ubuntu, Cantarell, 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
   font-size: 15px;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* ========== 滾動條美化(可選) ========== */
+body::-webkit-scrollbar {
+  width: 8px;
+  background: var(--background);
+}
+body::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 8px;
+}
+
+.btn-icon i {
+  color: var(--icon-default);
+}
+
+/* ========== 核心主題按鈕顏色(保證所有 .btn-primary .btn-outline 都亮) ========== */
+.btn-primary {
+  background: var(--primary-color);
+  color: #fff !important;
+  border: none;
+  transition: background 0.2s, color 0.2s;
+}
+.btn-primary:hover,
+.btn-primary:focus {
+  background: var(--primary-hover);
+  color: #fff !important;
+}
+.btn-outline {
+  background: transparent;
+  color: var(--primary-color);
+  border: 1.5px solid var(--primary-color);
+  transition: background 0.2s, color 0.2s;
+}
+.btn-outline:hover,
+.btn-outline:focus {
+  background: var(--primary-color);
+}
+
+/* ========== 其它顏色語意的 class 建議都能正常使用 ========== */
+.text-primary { color: var(--primary-color) !important; }
+.text-success { color: var(--success-color) !important; }
+.text-danger  { color: var(--danger-color) !important; }
+.bg-primary   { background: var(--primary-color) !important; color: #fff !important;}
+.bg-surface   { background: var(--surface) !important; }
+.bg-danger    { background: var(--danger-color) !important; color: #fff !important;}
+
