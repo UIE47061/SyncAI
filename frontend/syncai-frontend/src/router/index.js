@@ -1,14 +1,12 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import HostPage from '../components/HostPage.vue'
-import ParticipantJoin from '../components/ParticipantJoin.vue'
-import HostDiscussion from '../components/HostDiscussion.vue'
-import ParticipantDiscussion from '../components/ParticipantDiscussion.vue'
+import Home from '../components/Home.vue'
+import HostPanel from '../components/HostPanel.vue'
+import ParticipantPanel from '../components/ParticipantPanel.vue'
 
 const routes = [
-  { path: '/', component: HostPage },
-  { path: '/join', component: ParticipantJoin },
-  { path: '/discussion', component: HostDiscussion }, // 主持人討論頁
-  { path: '/participant-discussion', component: ParticipantDiscussion } // 參與者討論頁
+  { path: '/', component: Home },
+  { path: '/host', component: HostPanel },
+  { path: '/participant', component: ParticipantPanel }
 ]
 
 const router = createRouter({
