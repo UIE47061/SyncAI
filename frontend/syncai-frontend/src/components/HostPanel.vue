@@ -159,7 +159,7 @@
             </div>
           </div>
           <div class="control-section">
-            <h3>分享會議室</h3>
+            <!-- <h3>分享會議室</h3> -->
             <div class="share-item">
                   <span>會議連結</span>
                   <div class="code-display">
@@ -645,7 +645,9 @@ function hideQRCode() {
 
 // 根據窗口寬度更新 QR Code 尺寸
 function updateQRCodeSize() {
-  qrcodeSize.value = window.innerWidth < 768 ? 320 : 640
+  // qrcodeSize.value = window.innerWidth < 768 ? 320 : 640
+  // 寬度最多320，最少120，永遠不會超出視窗
+  qrcodeSize.value = Math.max(120, Math.min(280, Math.floor(window.innerWidth * 0.3)));
 }
 
 // 監聽設定變化自動寫回
@@ -1512,6 +1514,85 @@ onBeforeUnmount(() => {
 
 .qrcode-modal-overlay {
   position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 2000;
+  animation: fadeIn 0.3s;
+  backdrop-filter: blur(4px);
+}
+
+.qrcode-modal {
+  background: var(--background, #fff);
+  border-radius: 1rem;
+  width: 98vw;
+  max-width: 420px;
+  box-shadow: 0 12px 30px rgba(0,0,0,0.18);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1.5rem 1rem;
+  overflow: hidden;
+}
+
+.qrcode-modal-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.2rem;
+}
+
+.qrcode-modal-body {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.qrcode-large {
+  background: #fff;
+  border-radius: 0.7rem;
+  margin-bottom: 1.2rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  max-width: 320px;
+  max-height: 320px;
+  padding: 1rem;
+  box-sizing: border-box;
+}
+
+.qrcode-modal-info {
+  width: 100%;
+  text-align: center;
+  font-size: 1rem;
+  word-break: break-all;
+}
+
+.qrcode-room-code {
+  font-size: 1.08rem;
+  font-weight: 500;
+  color: var(--primary-color, #3451db);
+  margin-bottom: 0.3em;
+}
+
+.qrcode-link-text {
+  color: var(--text-secondary, #666);
+  font-size: 0.93em;
+  margin-top: 0.4em;
+  word-break: break-all;
+}
+
+@media (max-width: 500px) {
+  .qrcode-modal { max-width: 98vw; padding: 0.7rem 0.2rem; }
+  .qrcode-large { max-width: 80vw; max-height: 80vw; padding: 0.4rem; }
+}
+
+/* .qrcode-modal-overlay {
+  position: fixed;
   top: 0;
   left: 0;
   right: 0;
@@ -1529,19 +1610,19 @@ onBeforeUnmount(() => {
   background: var(--background);
   border-radius: 1rem;
   width: 90%;
-  max-width: calc(640px + 6rem); /* 640px QR Code + padding */
+  max-width: calc(640px + 6rem);
   box-shadow: var(--shadow-lg);
   overflow: hidden;
   animation: modalSlideUp 0.3s ease;
-}
+} */
 
-.qrcode-modal-header {
+/* .qrcode-modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 1rem 1.5rem;
   border-bottom: 1px solid var(--border);
-}
+} */
 
 .qrcode-modal-header h3 {
   font-weight: 600;
@@ -1559,16 +1640,16 @@ onBeforeUnmount(() => {
   padding: 0.2rem;
 }
 
-.qrcode-modal-body {
+/* .qrcode-modal-body {
   padding: clamp(1rem, 5vw, 1.5rem);
   display: flex;
   flex-direction: column;
   align-items: center;
   overflow-y: auto;
   max-height: 80vh;
-}
+} */
 
-.qrcode-large {
+/* .qrcode-large {
   background: white;
   padding: clamp(1rem, 4%, 1.5rem);
   border-radius: 0.5rem;
@@ -1578,25 +1659,25 @@ onBeforeUnmount(() => {
   width: auto;
   max-width: 100%;
   overflow: hidden;
-}
+} */
 
-.qrcode-modal-info {
+/* .qrcode-modal-info {
   width: 100%;
   text-align: center;
-}
+} */
 
-.qrcode-room-code {
+/* .qrcode-room-code {
   font-size: 1.1rem;
   font-weight: 500;
   margin-bottom: 0.5rem;
   color: var(--text-primary);
-}
+} */
 
-.qrcode-link-text {
+/* .qrcode-link-text {
   font-size: 0.9rem;
   color: var(--text-secondary);
   word-break: break-all;
-}
+} */
 
 /* 房間狀態樣式 */
 .room-status {

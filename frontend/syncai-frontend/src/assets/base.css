@@ -17,7 +17,7 @@
   --vt-c-text-dark-1: var(--vt-c-white);
   --vt-c-text-dark-2: rgba(235, 235, 235, 0.64);
 
-  /* MeetQ 主題色 */
+  /* SyncAI 主題色 */
   --primary-color: #2563eb;
   --primary-hover: #1d4ed8;
   --secondary-color: #64748b;
@@ -41,6 +41,8 @@
   --color-heading: var(--vt-c-text-light-1);
   --color-text: var(--vt-c-text-light-1);
   --section-gap: 160px;
+
+  --icon-default: #2563eb;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -64,6 +66,8 @@
     --color-border-hover: var(--vt-c-divider-dark-1);
     --color-heading: var(--vt-c-text-dark-1);
     --color-text: var(--vt-c-text-dark-2);
+
+    --icon-default: #b9d1ff;
   }
 }
 
@@ -99,6 +103,10 @@ body::-webkit-scrollbar {
 body::-webkit-scrollbar-thumb {
   background: var(--border);
   border-radius: 8px;
+}
+
+.btn-icon i {
+  color: var(--icon-default);
 }
 
 /* ========== 核心主題按鈕顏色(保證所有 .btn-primary .btn-outline 都亮) ========== */
