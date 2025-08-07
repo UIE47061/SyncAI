@@ -553,8 +553,8 @@ function registerHeartbeat() {
   // 註冊參與者
   joinRoom(deviceId)
   
-  // 設置心跳，每 30 秒發送一次
-  heartbeatPoller = setInterval(() => sendHeartbeat(deviceId), 30000)
+  // 設置心跳，每 3 秒發送一次
+  heartbeatPoller = setInterval(() => sendHeartbeat(deviceId), 3000)
 }
 
 // 加入房間

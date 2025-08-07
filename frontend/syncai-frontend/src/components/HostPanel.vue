@@ -11,7 +11,7 @@
           <div class="room-info">
             <span class="room-code">會議代碼: <strong>{{ roomCode || '------' }}</strong></span>
             <span class="participant-count">參與人數: <strong>{{ room?.participants ?? 0 }}</strong></span>
-            <span class="room-status" :class="'status-' + roomStatus.toLowerCase()">
+            <span class="room-status" :class="'status-' + roomStatus.toLowerCase()" @click="toggleRoomStatus">
               狀態: <strong>{{ roomStatusText }}</strong>
             </span>
           </div>
@@ -73,16 +73,20 @@
                 </div>
               </div>
               
+              <!-- 取代舊的 topic-actions，主題新增按鈕只留在上方 -->
               <div class="topic-actions">
                 <button class="btn btn-primary btn-sm" @click="addNewTopic">
                   <i class="fa-solid fa-plus"></i>
                   <span>新增主題</span>
                 </button>
-                <button class="btn btn-outline btn-sm" @click="exportAllTopics">
-                  <i class="fa-solid fa-download"></i>
-                  <span>匯出全部</span>
-                </button>
               </div>
+            </div>
+            <!-- 匯出全部單獨置底 -->
+            <div class="sidebar-bottom">
+              <button class="btn btn-outline btn-sm" @click="exportAllTopics" style="width: 90%; margin: 1.5rem auto 0 auto;">
+                <i class="fa-solid fa-download"></i>
+                <span>匯出全部</span>
+              </button>
             </div>
           </template>
         </div>
@@ -151,77 +155,127 @@
         <!-- 控制面板 -->
         <div class="control-panel">
           <div class="panel-header">
-            <h2>會議室控制</h2>
-            <div class="panel-controls">
-              <button class="btn-qrcode" @click="showQRCode">
-                開啟 QR Code
+            <h2>控制區</h2>
+            <div class="panel-tabs">
+              <button :class="{ active: controlTab === 'info' }" @click="controlTab = 'info'" title="會議資訊">
+                <i class="fa-solid fa-link"></i>
+              </button>
+              <button :class="{ active: controlTab === 'control' }" @click="controlTab = 'control'" title="會議控制">
+                <i class="fa-solid fa-gear"></i>
+              </button>
+              <button :class="{ active: controlTab === 'members' }" @click="controlTab = 'members'" title="成員名單">
+                <i class="fa-solid fa-users"></i>
               </button>
             </div>
           </div>
-          <div class="control-section">
-            <!-- <h3>分享會議室</h3> -->
-            <div class="share-item">
-                  <span>會議連結</span>
-                  <div class="code-display">
-                    <span>{{ roomLink }}</span>
-                    <button class="btn-icon" @click="copyRoomLink" title="複製連結">
-                      <i class="fa-regular fa-clipboard"></i>
+          <template v-if="controlTab === 'info'">
+            <div class="panel-header" style="display:none"></div>
+            <div class="panel-controls" style="display:none"></div>
+            <div class="control-section">
+              <div class="share-item">
+                <div class="share-title-row">
+                  <h2>會議連結</h2>
+                  <button class="btn-qrcode" @click="showQRCode">
+                    開啟 QR Code
+                  </button>
+                </div>
+                <div class="code-display">
+                  <span>{{ roomLink }}</span>
+                  <button class="btn-icon" @click="copyRoomLink" title="複製連結">
+                    <i class="fa-regular fa-clipboard"></i>
+                  </button>
+                </div>
+                <div class="setting-item" style="margin-top: 1rem;">
+                  <label class="switch">
+                    <input type="checkbox" v-model="allowJoin" />
+                    <span class="slider"></span>
+                  </label>
+                  <span>允許加入</span>
+                </div>
+              </div>
+            </div>
+          </template>
+          <template v-else-if="controlTab === 'control'">
+            <div class="control-section">
+              <div class="timer-header-row">
+                <h3>計時器</h3>
+                <div class="timer-header-actions">
+                  <div class="timer-controls">
+                    <button class="btn-timer" :class="{ 'timer-active': timerRunning }" @click="toggleTimer">
+                      <i :class="timerRunning ? 'fa-solid fa-pause' : 'fa-solid fa-play'"></i>
+                    </button>
+                    <button class="btn-timer" @click="showTimerSettings">
+                      <i class="fa-solid fa-gear"></i>
+                    </button>
+                    <button class="btn-timer btn-terminate" @click="terminateTimer">
+                      <i class="fa-solid fa-stop"></i>
                     </button>
                   </div>
                 </div>
-          </div>
-          <div class="control-section">
-            <h3>計時器</h3>
-            <div class="timer-display">
-              <div class="timer-time">{{ formattedRemainingTime }}</div>
-              <div class="timer-controls">
-                <button class="btn-timer" :class="{ 'timer-active': timerRunning }" @click="toggleTimer">
-                  <i :class="timerRunning ? 'fa-solid fa-pause' : 'fa-solid fa-play'"></i>
-                </button>
-                <button class="btn-timer" @click="showTimerSettings">
-                  <i class="fa-solid fa-gear"></i>
-                </button>
-                <button class="btn-timer btn-terminate" @click="terminateTimer">
-                  <i class="fa-solid fa-stop"></i>
-                </button>
+              </div>
+              <div class="timer-display">
+                <div class="timer-top">
+                  <div class="timer-time">{{ formattedRemainingTime }}</div>
+                </div>
+              </div>
+              <div class="setting-row">
+                <span>時間到後自動切換會議狀態</span>
+                <label class="switch">
+                  <input type="checkbox" v-model="autoChangeStatus" />
+                  <span class="slider"></span>
+                </label>
               </div>
             </div>
-          </div>
-
-          <div class="control-section">
-            <h3>問答設定</h3>
-            <div class="setting-item">
-              <label class="switch">
-                <input type="checkbox" v-model="settings.allowQuestions">
-                <span class="slider"></span>
-              </label>
-              <span>允許新意見</span>
-            </div>
-            <div class="setting-item">
-              <label class="switch">
-                <input type="checkbox" v-model="settings.allowVoting">
-                <span class="slider"></span>
-              </label>
-              <span>允許投票</span>
-            </div>
-          </div>
-          <div class="control-section">
-            <h3>統計資訊</h3>
-            <div class="stats-grid">
-              <div class="stat-item">
-                <div class="stat-number">{{ questions.length }}</div>
-                <div class="stat-label">總意見數</div>
+            <div class="control-section">
+              <h3>問答設定</h3>
+              <!-- 保留原有設定區塊 -->
+              <div class="setting-item">
+                <label class="switch">
+                  <input type="checkbox" v-model="settings.allowQuestions">
+                  <span class="slider"></span>
+                </label>
+                <span>允許新意見</span>
               </div>
-              <div class="stat-item">
-                <div class="stat-number">{{ totalVotes }}</div>
-                <div class="stat-label">總投票數</div>
-              </div>
-              <div class="stat-item">
-                <div class="stat-number">{{ room?.participants ?? 0 }}</div>
-                <div class="stat-label">活躍參與者</div>
+              <div class="setting-item">
+                <label class="switch">
+                  <input type="checkbox" v-model="settings.allowVoting">
+                  <span class="slider"></span>
+                </label>
+                <span>允許投票</span>
               </div>
             </div>
-          </div>
+            <div class="control-section">
+              <h3>統計資訊</h3>
+              <!-- 保留原有統計資訊區塊 -->
+              <div class="stats-grid">
+                <div class="stat-item">
+                  <div class="stat-number">{{ questions.length }}</div>
+                  <div class="stat-label">總意見數</div>
+                </div>
+                <div class="stat-item">
+                  <div class="stat-number">{{ totalVotes }}</div>
+                  <div class="stat-label">總投票數</div>
+                </div>
+                <div class="stat-item">
+                  <div class="stat-number">{{ room?.participants ?? 0 }}</div>
+                  <div class="stat-label">活躍參與者</div>
+                </div>
+              </div>
+            </div>
+          </template>
+          <template v-else-if="controlTab === 'members'">
+            <div class="control-section">
+              <h3>目前參與者</h3>
+              <ul class="participant-list">
+                <li v-for="(p, index) in participantsList" :key="index">
+                  <i class="fa-regular fa-user"></i> {{ p.nickname }}
+                  <button class="btn-icon" @click="removeParticipant(index)" title="移除成員">
+                    <i class="fa-solid fa-xmark"></i>
+                  </button>
+                </li>
+              </ul>
+            </div>
+          </template>
         </div>
       </div>
     </main>
@@ -232,7 +286,7 @@
         v-for="(msg, i) in notifications"
         :key="i"
         :class="['notification', `notification-${msg.type}`]"
-        style="position: fixed; top: 20px; right: 20px; z-index: 2000; margin-bottom: 12px;"
+        style="position: fixed; bottom: 32px; right: 32px; z-index: 2000; margin-bottom: 12px; top: auto;"
       >
         <span>{{ msg.text }}</span>
         <button @click="removeNotification(i)">&times;</button>
@@ -311,6 +365,14 @@ import { ref, reactive, computed, onMounted, watch, onBeforeUnmount } from 'vue'
 import QrcodeVue from 'qrcode.vue'
 import { useRouter } from 'vue-router'
 
+// 控制面板 tab 狀態
+const controlTab = ref('info')
+function removeParticipant(index) {
+  participantsList.value.splice(index, 1)
+  showNotification('已移除成員', 'info')
+}
+
+
 // API 基礎 URL 設定
 const API_BASE_URL = `${window.location.protocol}//${window.location.hostname}:8000`  // 根據實際後端服務的地址和端口進行調整
 
@@ -326,6 +388,9 @@ const isQRCodeModalVisible = ref(false)
 const qrcodeSize = ref(window.innerWidth < 768 ? 320 : 640)
 const router = useRouter()
 
+// 允許加入房間開關
+const allowJoin = ref(true)
+
 // 計時器相關
 const remainingTime = ref(0) // 剩餘時間（以秒為單位）
 const initialTime = ref(0) // 初始設定的時間
@@ -337,6 +402,7 @@ const timerSettings = reactive({
   minutes: 5,
   seconds: 0
 })
+const autoChangeStatus = ref(true)
 
 // 側邊欄與主題相關
 const isSidebarCollapsed = ref(false)
@@ -366,7 +432,33 @@ const roomStatusText = computed(() => {
   }
 })
 
+// 上方狀態顯示切換
+function toggleRoomStatus() {
+  if (roomStatus.value === 'Discussion') {
+    setRoomStatus('Stop')
+  } else if (roomStatus.value === 'Stop') {
+    setRoomStatus('Discussion')
+  }
+}
 // participantUrl.value = `${window.location.protocol}//${window.location.hostname}:5173/participant?room=${roomCode.value}`
+
+// 取得參與者名單
+const participantsList = ref([])
+
+async function fetchParticipants() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/participants?room=${roomCode.value}`)
+    const data = await res.json()
+    participantsList.value = data.participants || []
+  } catch (err) {
+    console.error('取得參與者失敗', err)
+  }
+}
+
+onMounted(() => {
+  fetchParticipants()
+  setInterval(fetchParticipants, 5000)
+})
 
 // 意見排序
 const sortedQuestions = computed(() => {
@@ -653,6 +745,33 @@ function updateQRCodeSize() {
 // 監聽設定變化自動寫回
 watch(settings, saveRoom, { deep: true })
 
+// 監聽 allowJoin 狀態變化，自動呼叫 setRoomAllowJoin
+watch(allowJoin, (val) => {
+  setRoomAllowJoin(val)
+})
+
+async function setRoomAllowJoin(allowed) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/room_allow_join`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        room: roomCode.value,
+        allow_join: allowed
+      })
+    })
+    const data = await res.json()
+    if (!data.success) {
+      showNotification('設定允許加入失敗', 'error')
+    }
+  } catch (err) {
+    console.error(err)
+    showNotification('設定允許加入時發生錯誤', 'error')
+  }
+}
+
 // 側邊欄相關函數
 function toggleSidebar() {
   isSidebarCollapsed.value = !isSidebarCollapsed.value
@@ -880,24 +999,33 @@ async function startTimer() {
   }
   
   // 更新房間狀態為討論中
-  await setRoomStatus('Discussion')
+  // await setRoomStatus('Discussion')
   
   // 記錄計時器開始時間
   const startTime = Date.now()
   const initialSeconds = remainingTime.value
   
   // 設置新計時器，使用基於時間差的方式計算，而不是簡單地減1
-  timerInterval.value = setInterval(() => {
+  timerInterval.value = setInterval(async () => {
     const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000)
     const newRemaining = initialSeconds - elapsedSeconds
-    
+
     if (newRemaining > 0) {
       remainingTime.value = newRemaining
     } else {
       remainingTime.value = 0
       stopTimer()
-      // 計時結束時發出通知
-      showNotification('計時器時間到！', 'info')
+      if (autoChangeStatus.value) {
+        // 根據目前狀態進行切換
+        if (roomStatus.value === 'Discussion') {
+          await setRoomStatus('Stop')
+        } else if (roomStatus.value === 'Stop') {
+          await setRoomStatus('Discussion')
+        }
+        showNotification('計時器時間到！已自動切換狀態', 'info')
+      } else {
+        showNotification('時間到（未切換狀態）', 'info')
+      }
     }
   }, 500) // 更頻繁檢查但只在必要時更新視圖
 }
@@ -1198,6 +1326,9 @@ onBeforeUnmount(() => {
   transition: all 0.3s ease;
   overflow: hidden;
   position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 .topics-sidebar.collapsed {
@@ -1251,9 +1382,18 @@ onBeforeUnmount(() => {
 }
 
 .topics-container {
+  flex: 1 1 0;
   padding: 1rem;
   overflow-y: auto;
-  height: calc(100% - 60px);
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-bottom {
+  padding-bottom: 1rem;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
 }
 
 .topic-item {
@@ -1591,39 +1731,6 @@ onBeforeUnmount(() => {
   .qrcode-large { max-width: 80vw; max-height: 80vw; padding: 0.4rem; }
 }
 
-/* .qrcode-modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 2000;
-  backdrop-filter: blur(4px);
-  animation: fadeIn 0.3s ease;
-}
-
-.qrcode-modal {
-  background: var(--background);
-  border-radius: 1rem;
-  width: 90%;
-  max-width: calc(640px + 6rem);
-  box-shadow: var(--shadow-lg);
-  overflow: hidden;
-  animation: modalSlideUp 0.3s ease;
-} */
-
-/* .qrcode-modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1rem 1.5rem;
-  border-bottom: 1px solid var(--border);
-} */
-
 .qrcode-modal-header h3 {
   font-weight: 600;
   margin: 0;
@@ -1640,45 +1747,6 @@ onBeforeUnmount(() => {
   padding: 0.2rem;
 }
 
-/* .qrcode-modal-body {
-  padding: clamp(1rem, 5vw, 1.5rem);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  overflow-y: auto;
-  max-height: 80vh;
-} */
-
-/* .qrcode-large {
-  background: white;
-  padding: clamp(1rem, 4%, 1.5rem);
-  border-radius: 0.5rem;
-  margin-bottom: 1.5rem;
-  display: flex;
-  justify-content: center;
-  width: auto;
-  max-width: 100%;
-  overflow: hidden;
-} */
-
-/* .qrcode-modal-info {
-  width: 100%;
-  text-align: center;
-} */
-
-/* .qrcode-room-code {
-  font-size: 1.1rem;
-  font-weight: 500;
-  margin-bottom: 0.5rem;
-  color: var(--text-primary);
-} */
-
-/* .qrcode-link-text {
-  font-size: 0.9rem;
-  color: var(--text-secondary);
-  word-break: break-all;
-} */
-
 /* 房間狀態樣式 */
 .room-status {
   margin-left: 1rem;
@@ -1686,6 +1754,7 @@ onBeforeUnmount(() => {
   border-radius: 50px;
   font-size: 0.9rem;
   background-color: #f0f0f0;
+  cursor: pointer;
 }
 
 .status-notfound {
@@ -1726,10 +1795,8 @@ onBeforeUnmount(() => {
 }
 
 /* 計時器樣式 */
+/* 計時器外層樣式保留 */
 .timer-display {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   background: var(--background);
   padding: 12px 16px;
   border-radius: 12px;
@@ -1738,17 +1805,25 @@ onBeforeUnmount(() => {
   border: 1px solid var(--border);
 }
 
+/* 新增：計時器上下分層 */
+.timer-top {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  gap: 12px;
+}
+
 .timer-time {
-  font-size: 1.5rem;
-  font-weight: 600;
+  font-size: 2rem;
+  font-weight: 700;
   color: var(--text-primary);
-  font-variant-numeric: tabular-nums;
-  font-family: 'SF Mono', SFMono-Regular, ui-monospace, monospace;
 }
 
 .timer-controls {
   display: flex;
-  gap: 10px;
+  justify-content: center;
+  gap: 12px;
 }
 
 .btn-timer {
@@ -2021,5 +2096,99 @@ onBeforeUnmount(() => {
     align-items: flex-start;
     width: 100%;
   }
+}
+
+
+.panel-tabs {
+  display: flex;
+  gap: 10px;
+}
+
+.panel-tabs button {
+  background: transparent;
+  border: none;
+  padding: 6px 12px;
+  font-size: 1.2rem;
+  cursor: pointer;
+  color: var(--text-secondary);
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.panel-tabs button.active {
+  color: var(--primary-color);
+  border-color: var(--primary-color);
+  font-weight: 600;
+}
+
+.participant-list {
+  list-style: none;
+  padding: 0;
+  margin-top: 0.75rem;
+}
+
+.participant-list li {
+  margin-bottom: 0.5rem;
+  font-size: 1rem;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-icon {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  color: var(--text-secondary);
+  transition: color 0.2s;
+}
+
+.btn-icon:hover {
+  color: var(--danger);
+}
+</style>
+<style scoped>
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+}
+</style>
+<style scoped>
+.share-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+  gap: 12px;
+}
+</style>
+<style scoped>
+.setting-row {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  margin-top: 1rem;
+}
+</style>
+<style scoped>
+.timer-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+  gap: 1.5rem;
+}
+.timer-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
 }
 </style>

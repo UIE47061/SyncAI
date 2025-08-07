@@ -264,7 +264,7 @@ def get_participants(room: str):
         online = [
             {"device_id": p["device_id"], "nickname": p["nickname"]}
             for p in ROOMS[room]["participants_list"]
-            if (now - p["last_seen"]) <= 5
+            if (now - p["last_seen"]) <= 10
         ]
         ROOMS[room]["participants_list"] = [
             p for p in ROOMS[room]["participants_list"]
@@ -961,3 +961,32 @@ def get_all_rooms():
         "topics": topics, 
         "votes": votes
     }
+
+class AllowJoinRequest(BaseModel):
+    room: str
+    allow_join: bool
+
+# 設定房間是否允許新參與者加入
+@router.post("/api/room_allow_join")
+def set_room_allow_join(data: AllowJoinRequest):
+    """
+    設定房間是否允許新參與者加入
+
+    [POST] /api/room_allow_join
+
+    描述：
+    根據傳入的參數設定房間是否允許新參與者加入。
+
+    參數：
+    - room (str): 房間代碼
+    - allow_join (bool): 是否允許加入
+
+    回傳：
+    - success (bool): 是否成功設定
+    - allow_join (bool): 當前允許加入的狀態
+    """
+    if data.room not in ROOMS:
+        return {"success": False, "error": "房間不存在"}
+
+    ROOMS[data.room]["allow_join"] = data.allow_join
+    return {"success": True, "allow_join": data.allow_join}
