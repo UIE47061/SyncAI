@@ -10,7 +10,7 @@
         <div class="nav-actions">
           <div class="room-info">
             <span class="room-code">會議代碼: <strong>{{ roomCode || '------' }}</strong></span>
-            <span class="participant-count">參與人數: <strong>{{ room?.participants ?? 0 }}</strong></span>
+            <span class="participant-count">參與人數: <strong>{{ participantsList.length }}</strong></span>
             <span class="room-status" :class="'status-' + roomStatus.toLowerCase()" @click="toggleRoomStatus">
               狀態: <strong>{{ roomStatusText }}</strong>
             </span>
@@ -257,7 +257,7 @@
                   <div class="stat-label">總投票數</div>
                 </div>
                 <div class="stat-item">
-                  <div class="stat-number">{{ room?.participants ?? 0 }}</div>
+                  <div class="stat-number">{{ participantsList.length }}</div>
                   <div class="stat-label">活躍參與者</div>
                 </div>
               </div>
@@ -999,7 +999,7 @@ async function startTimer() {
   }
   
   // 更新房間狀態為討論中
-  // await setRoomStatus('Discussion')
+  await setRoomStatus('Discussion')
   
   // 記錄計時器開始時間
   const startTime = Date.now()
