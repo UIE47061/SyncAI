@@ -3,7 +3,8 @@ from pydantic import BaseModel
 from llama_cpp import Llama
 import os
 import json
-from typing import Union
+from typing import Union, List
+from .participants_api import ROOMS, topics, votes
 
 router = APIRouter(prefix="/ai", tags=["AI"])
 
@@ -26,55 +27,94 @@ def ask_ai(req: AskRequest):
     answer = output["choices"][0]["text"].strip()
     return {"answer": answer}
 
+# 定義用於 AI 總結的請求模型
 class SummaryRequest(BaseModel):
-    topic: str = None
-    comments: list = None
-    participants: list = None
-    is_anonymous: bool = None
-    discussion_goal: str = None
-    duration: Union[str, int, None] = None
+    room: str  # 會議室代碼
+    topic: str # 要總結的主題
 
+# --- 重寫 summary_ai 函式 ---
 @router.post("/summary")
 def summary_ai(req: SummaryRequest):
-    if req.topic == "__from_file__":
-        with open("meeting_log/test.json", "r", encoding="utf-8") as f:
-            data = json.load(f)
-        req = SummaryRequest(**data)
+    """
+    對指定會議室的特定主題進行 AI 總結
 
-    prompt = ""
-    if req.topic:
-        prompt += f"主題: {req.topic}\n"
-    if req.participants:
-        prompt += f"參與者: {', '.join(req.participants)}\n"
-    if req.is_anonymous is not None:
-        prompt += f"是否匿名: {'是' if req.is_anonymous else '否'}\n"
-    if req.discussion_goal:
-        prompt += f"討論目標: {req.discussion_goal}\n"
+    [POST] /ai/summary
+
+    參數：
+    - room (str): 會議室代碼
+    - topic (str): 要進行總結的主題名稱
+
+    回傳：
+    - summary (str): AI 生成的總結文字
+    """
+    # 檢查會議室是否存在
+    if req.room not in ROOMS:
+        return {"summary": "錯誤：找不到指定的會議室。"}
+
+    # 組合主題 ID 並檢查主題是否存在
+    topic_id = f"{req.room}_{req.topic}"
+    if topic_id not in topics:
+        return {"summary": "錯誤：在該會議室中找不到指定的主題。"}
+
+    room_data = ROOMS[req.room]
+    topic_data = topics[topic_id]
+    
+    # --- 開始建立 Prompt ---
+    prompt = f"主題: {req.topic}\n"
+
+    # 取得參與者列表
+    participants = [p.get("nickname", "匿名") for p in room_data.get("participants_list", [])]
+    if participants:
+        prompt += f"參與者: {', '.join(participants)}\n"
 
     prompt += "\n留言與票數:\n"
 
-    if req.comments:
-        for c in req.comments:
+    # 取得該主題的所有留言與其對應的票數
+    comments_for_prompt = []
+    if "comments" in topic_data:
+        for c in topic_data["comments"]:
+            comment_id = c.get("id")
             nickname = c.get("nickname", "匿名")
             content = c.get("content", "")
-            likes = c.get("likes", 0)
-            dislikes = c.get("dislikes", 0)
-            t = c.get("time", "")
-            prompt += f"- {nickname}：{content}（👍{likes}、👎{dislikes}，{t}）\n"
+            
+            # 從 votes 字典中取得票數
+            good_votes = len(votes.get(comment_id, {}).get("good", []))
+            bad_votes = len(votes.get(comment_id, {}).get("bad", []))
 
+            comments_for_prompt.append(
+                f"- {nickname}：{content}（👍{good_votes}、👎{bad_votes}）"
+            )
+
+    if not comments_for_prompt:
+        prompt += "目前這個主題還沒有任何留言。\n"
+    else:
+        prompt += "\n".join(comments_for_prompt)
+
+    # 加上固定的指令模板
     prompt += """
-                請用條列式彙整本次討論的主要觀點與結論，若有明顯正反方意見請分開整理。
-                請務必根據下方每一筆留言與統計資訊，不要自行臆測或生成不存在的數字或名稱。
-                請按照以下格式輸出，每一項都要有主題、主流意見、分歧點、可能決議：
-                ---
-                1. <重點主題>
-                - 主流意見：
-                - 分歧點：（若無則寫“無”）
-                - 可能決議：
-                ---
-                最後以「總結」區塊條列本次會議得到的最重要共識或AI建議後續追蹤事項。
-            """
 
+                    你的任務是擔任一個專業的會議記錄員。
+                    你必須嚴格根據上方提供的「留言與票數」資訊，進行條列式彙整。
+                    禁止臆測或生成任何未在資料中出現的數字、名稱或觀點。
+                    你的回答內容，只能包含彙整後的結果，禁止加入任何開場白、問候語或結尾的免責聲明。
+
+                    請直接以以下格式輸出，並將真實的內容填入：
+                    ---
+                    1. [第一個重點主題]
+                    - 主流意見：
+                    - 分歧點：（若無則寫“無”）
+                    - 可能決議：
+                    ---
+                    2. [第二個重點主題]
+                    - 主流意見：
+                    - 分歧點：（若無則寫“無”）
+                    - 可能決議：
+                    ---
+                    總結：
+                    [此處條列會議的最重要共識或後續追蹤事項]
+                """
+
+    # 呼叫 AI 模型
     output = llm(
         prompt,
         max_tokens=1024,
@@ -82,5 +122,6 @@ def summary_ai(req: SummaryRequest):
         echo=False,
         temperature=0.8,
     )
+    
     summary_text = output["choices"][0]["text"].strip()
     return {"summary": summary_text}

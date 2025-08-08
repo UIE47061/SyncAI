@@ -100,6 +100,9 @@
                 <option value="votes">按票數排序</option>
                 <option value="time">按時間排序</option>
               </select>
+              <button class="btn-qrcode" @click="summaryAI" :title="`統整主題「${topics[selectedTopicIndex]?.title || ''}」的意見`">
+                AI統整
+              </button>
               <button class="btn-red btn-qrcode" @click="clearAllQuestions" :title="`清空主題「${topics[selectedTopicIndex]?.title || ''}」的所有評論`">
                 <i class="fa-solid fa-trash-can"></i>
                 清空評論
@@ -174,7 +177,7 @@
             <div class="control-section">
               <div class="share-item">
                 <div class="share-title-row">
-                  <h2>會議連結</h2>
+                  <h3>會議連結</h3>
                   <button class="btn-qrcode" @click="showQRCode">
                     開啟 QR Code
                   </button>
@@ -691,6 +694,84 @@ function deleteQuestion(id) {
   }
 }
 
+/**
+ * 呼叫後端 API 以生成會議總結，並將結果顯示在指定的文字區塊中。
+ * @param {object} params - 包含會議室和主題資訊的物件。
+ * @param {string} params.room - 當前的會議室代碼 (Room Code)。
+ * @param {string} params.topic - 要進行總結的主題名稱。
+ */
+async function summaryAI(params) {
+  // 假設您有一個顯示總結按鈕，ID 為 'summary-btn'
+  const summaryButton = document.getElementById('summary-btn');
+  // 假設您的留言輸入框的 ID 是 'comment-input'
+  const commentInput = document.getElementById('comment-input');
+
+  if (!params.room || !params.topic) {
+    console.error("錯誤：缺少 room 或 topic 參數。");
+    alert("無法生成總結，因為缺少必要的會議資訊。");
+    return;
+  }
+  
+  // --- 1. 進入載入狀態 (提供使用者回饋) ---
+  if (summaryButton) {
+    summaryButton.disabled = true;
+    summaryButton.textContent = 'AI 總結中...';
+  }
+
+  try {
+    // --- 2. 呼叫後端的 summary API ---
+    const response = await fetch(`${API_BASE_URL}/api/summary`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      // 將參數轉換為 JSON 字串作為請求的 body
+      body: JSON.stringify({
+        room: params.room,
+        topic: params.topic
+      }),
+    });
+
+    // --- 3. 處理 API 回應 ---
+    if (!response.ok) {
+      // 如果伺服器回傳錯誤狀態 (例如 404, 500)
+      throw new Error(`API 請求失敗，狀態碼：${response.status}`);
+    }
+
+    // 解析回傳的 JSON 資料
+    const data = await response.json();
+
+    if (data.summary) {
+      // --- 4. 將總結結果貼回留言區 ---
+      if (commentInput) {
+        // 如果是 <textarea> 或 <input>，使用 .value
+        commentInput.value = data.summary;
+        
+        // (可選) 自動將焦點移到輸入框上
+        commentInput.focus();
+      } else {
+        console.error("錯誤：找不到 ID 為 'comment-input' 的留言輸入框。");
+        // 如果找不到輸入框，也可以用 alert 顯示
+        alert("AI 總結：\n" + data.summary);
+      }
+    } else {
+      throw new Error("API 回應中未包含 summary 欄位。");
+    }
+
+  } catch (error) {
+    // --- 5. 處理所有可能發生的錯誤 ---
+    console.error('生成 AI 總結時發生錯誤:', error);
+    alert('無法生成會議總結，請檢查網路連線或稍後再試。');
+
+  } finally {
+    // --- 6. 無論成功或失敗，都恢復按鈕狀態 ---
+    if (summaryButton) {
+      summaryButton.disabled = false;
+      summaryButton.textContent = '生成 AI 總結';
+    }
+  }
+}
+
 async function clearAllQuestions() {
   if (confirm('確定要清空所有意見嗎？此操作無法復原。')) {
     // 獲取當前主題名稱
@@ -1177,7 +1258,7 @@ async function startTimer() {
   }
   
   // 更新房間狀態為討論中
-  await setRoomStatus('Discussion')
+  // await setRoomStatus('Discussion')
   
   // 記錄計時器開始時間
   const startTime = Date.now()
@@ -2373,11 +2454,18 @@ onBeforeUnmount(() => {
   gap: 1.5rem;
 }
 
+.share-title-row h3 {
+  margin: 0 0 0 0;
+  font-size: 1.1rem;
+  /* color: var(--color-text); */
+  font-weight: 600;
+}
+
 /* 房間資訊設定樣式 */
 .room-info-settings h3 {
-  margin: 0 0 1rem 0;
+  margin: 1rem 0 1rem 0;
   font-size: 1.1rem;
-  color: var(--color-text);
+  /* color: var(--color-text); */
   font-weight: 600;
 }
 
