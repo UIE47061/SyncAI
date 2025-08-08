@@ -10,7 +10,7 @@
         <div class="nav-actions">
           <div class="room-info">
             <span class="room-code">會議代碼: <strong>{{ roomCode || '------' }}</strong></span>
-            <span class="participant-count">參與人數: <strong>{{ room?.participants ?? 0 }}</strong></span>
+            <span class="participant-count">參與人數: <strong>{{ participantsList.length }}</strong></span>
             <span class="room-status" :class="'status-' + roomStatus.toLowerCase()" @click="toggleRoomStatus">
               狀態: <strong>{{ roomStatusText }}</strong>
             </span>
@@ -192,6 +192,76 @@
                   </label>
                   <span>允許加入</span>
                 </div>
+                
+                <!-- 房間資訊設定 -->
+                <div class="room-info-settings" style="margin-top: 1.5rem;">
+                  <h3>房間資訊</h3>
+                  
+                  <!-- 顯示模式 -->
+                  <div v-if="!isEditingRoomInfo" class="room-info-display">
+                    <div class="room-info-item">
+                      <label>房間名稱</label>
+                      <div class="room-info-value">{{ room?.title || '載入中...' }}</div>
+                    </div>
+                    <div class="room-info-item">
+                      <label>主持人名稱</label>
+                      <div class="room-info-value">{{ room?.host || '載入中...' }}</div>
+                    </div>
+                    <div class="room-info-actions">
+                      <button class="btn btn-outline btn-sm" @click="startEditRoomInfo">
+                        <i class="fa-solid fa-pen-to-square"></i>
+                        編輯
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <!-- 編輯模式 -->
+                  <div v-else class="room-info-form">
+                    <div class="form-group">
+                      <label for="edit-room-title">房間名稱</label>
+                      <div class="input-with-btn">
+                        <input 
+                          id="edit-room-title"
+                          type="text" 
+                          v-model="editRoomTitle" 
+                          :placeholder="room?.title || '會議室名稱'"
+                          maxlength="50"
+                          class="form-input"
+                        />
+                      </div>
+                    </div>
+                    <div class="form-group">
+                      <label for="edit-room-host">主持人名稱</label>
+                      <div class="input-with-btn">
+                        <input 
+                          id="edit-room-host"
+                          type="text" 
+                          v-model="editRoomHost" 
+                          :placeholder="room?.host || '主持人名稱'"
+                          maxlength="20"
+                          class="form-input"
+                        />
+                      </div>
+                    </div>
+                    <div class="form-actions">
+                      <button 
+                        class="btn btn-primary btn-sm" 
+                        @click="updateRoomInfo"
+                        :disabled="!editRoomTitle.trim() || !editRoomHost.trim()"
+                      >
+                        <i class="fa-solid fa-check"></i>
+                        儲存變更
+                      </button>
+                      <button 
+                        class="btn btn-outline btn-sm" 
+                        @click="cancelEditRoomInfo"
+                      >
+                        <i class="fa-solid fa-xmark"></i>
+                        取消
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </template>
@@ -257,7 +327,7 @@
                   <div class="stat-label">總投票數</div>
                 </div>
                 <div class="stat-item">
-                  <div class="stat-number">{{ room?.participants ?? 0 }}</div>
+                  <div class="stat-number">{{ participantsList.length }}</div>
                   <div class="stat-label">活躍參與者</div>
                 </div>
               </div>
@@ -381,6 +451,11 @@ const room = ref(null)
 const roomCode = ref('')
 const questions = ref([])
 const roomStatus = ref('NotFound') // 房間狀態：NotFound, Stop, Discussion
+
+// 房間資訊編輯
+const editRoomTitle = ref('')
+const editRoomHost = ref('')
+const isEditingRoomInfo = ref(false)
 const settings = reactive({ allowQuestions: true, allowVoting: true })
 const sortBy = ref('votes')
 const notifications = ref([])
@@ -455,11 +530,6 @@ async function fetchParticipants() {
   }
 }
 
-onMounted(() => {
-  fetchParticipants()
-  setInterval(fetchParticipants, 5000)
-})
-
 // 意見排序
 const sortedQuestions = computed(() => {
   const arr = [...questions.value]
@@ -483,7 +553,7 @@ const sortedQuestions = computed(() => {
 })
 
 // 取得 Room 資訊
-function loadRoom() {
+async function loadRoom() {
   const urlParams = new URLSearchParams(window.location.search)
   const code = urlParams.get('room')
   if (!code) {
@@ -495,30 +565,75 @@ function loadRoom() {
   }
   roomCode.value = code
 
+  let roomFound = false
+
   // 從 localStorage 取得資料
   try {
     const roomsData = localStorage.getItem('Sync_AI_rooms')
     if (roomsData) {
       const rooms = new Map(JSON.parse(roomsData))
       const r = rooms.get(code)
-      if (!r) {
-        showNotification('本地找不到該會議室，將檢查服務器狀態', 'info')
-        // 不在這裡直接返回，讓後續的 API 檢查來決定
-        return
-      }
-      room.value = r
-      questions.value = r.questions || []
-      Object.assign(settings, r.settings || { allowQuestions: true, allowVoting: true })
-      
-      // 如果房間數據中有主題，則載入它們
-      if (r.topics && r.topics.length > 0) {
-        topics.value = r.topics
+      if (r) {
+        room.value = r
+        questions.value = r.questions || []
+        Object.assign(settings, r.settings || { allowQuestions: true, allowVoting: true })
+        
+        // 如果房間數據中有主題，則載入它們
+        if (r.topics && r.topics.length > 0) {
+          topics.value = r.topics
+        }
+        roomFound = true
       }
     }
   } catch (e) {
     console.error('載入會議室失敗:', e)
-    showNotification('載入會議室失敗', 'error')
-    // 不在這裡直接返回，讓後續的 API 檢查來決定
+  }
+
+  // 如果本地找不到房間資料，從 API 獲取
+  if (!roomFound) {
+    try {
+      // showNotification('本地找不到該會議室，正在從服務器獲取...', 'info')
+      const response = await fetch(`${API_BASE_URL}/api/rooms`)
+      const data = await response.json()
+      
+      if (data.rooms) {
+        const apiRoom = data.rooms.find(r => r.code === code)
+        if (apiRoom) {
+          room.value = {
+            code: apiRoom.code,
+            title: apiRoom.title,
+            host: apiRoom.host,
+            createdAt: new Date(apiRoom.created_at * 1000).toISOString(),
+            isActive: apiRoom.status !== 'End',
+            questions: [],
+            settings: { allowQuestions: true, allowVoting: true },
+            topics: [{ title: '主題 1', questions: [] }]
+          }
+          questions.value = []
+          topics.value = [{ title: '主題 1', questions: [] }]
+          
+          // 保存到 localStorage
+          saveRoom()
+          showNotification('已從服務器獲取房間資訊', 'success')
+        } else {
+          showNotification('服務器上找不到該會議室', 'error')
+          setTimeout(() => {
+            router.push('/')
+          }, 2000)
+        }
+      } else {
+        showNotification('無法獲取房間列表', 'error')
+        setTimeout(() => {
+          router.push('/')
+        }, 2000)
+      }
+    } catch (err) {
+      console.error('從 API 獲取房間資訊失敗:', err)
+      showNotification('無法連接到服務器', 'error')
+      setTimeout(() => {
+        router.push('/')
+      }, 2000)
+    }
   }
 }
 
@@ -648,7 +763,7 @@ async function endRoom() {
         saveRoom()
       }
       
-      showNotification('會議已結束，房間已關閉', 'success')
+      // showNotification('會議已結束，房間已關閉', 'success')
       setTimeout(() => {router.push('/');}, 2000)
     } catch (error) {
       console.error('結束會議失敗:', error)
@@ -770,6 +885,69 @@ async function setRoomAllowJoin(allowed) {
     console.error(err)
     showNotification('設定允許加入時發生錯誤', 'error')
   }
+}
+
+// 房間資訊更新函數
+function startEditRoomInfo() {
+  // 初始化編輯表單
+  editRoomTitle.value = room.value?.title || ''
+  editRoomHost.value = room.value?.host || ''
+  isEditingRoomInfo.value = true
+}
+
+function cancelEditRoomInfo() {
+  // 清空編輯表單並返回顯示模式
+  editRoomTitle.value = ''
+  editRoomHost.value = ''
+  isEditingRoomInfo.value = false
+}
+
+async function updateRoomInfo() {
+  if (!editRoomTitle.value.trim() || !editRoomHost.value.trim()) {
+    showNotification('房間名稱和主持人名稱不能為空', 'error')
+    return
+  }
+  
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/room_update_info`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        room: roomCode.value,
+        new_title: editRoomTitle.value.trim(),
+        new_host: editRoomHost.value.trim()
+      })
+    })
+    
+    const data = await response.json()
+    
+    if (data.success) {
+      // 更新本地的房間資料
+      if (room.value) {
+        room.value.title = data.new_title
+        room.value.host = data.new_host
+      }
+      
+      // 退出編輯模式
+      isEditingRoomInfo.value = false
+      editRoomTitle.value = ''
+      editRoomHost.value = ''
+      
+      showNotification('房間資訊更新成功', 'success')
+    } else {
+      showNotification(data.error || '更新房間資訊失敗', 'error')
+    }
+  } catch (err) {
+    console.error('更新房間資訊時發生錯誤:', err)
+    showNotification('更新房間資訊時發生錯誤', 'error')
+  }
+}
+
+function resetRoomInfoForm() {
+  editRoomTitle.value = room.value?.title || ''
+  editRoomHost.value = room.value?.host || ''
 }
 
 // 側邊欄相關函數
@@ -999,7 +1177,7 @@ async function startTimer() {
   }
   
   // 更新房間狀態為討論中
-  // await setRoomStatus('Discussion')
+  await setRoomStatus('Discussion')
   
   // 記錄計時器開始時間
   const startTime = Date.now()
@@ -1263,7 +1441,7 @@ async function setRoomState() {
 let roomPoller
 let dataPoller
 onMounted(async () => {
-  loadRoom()
+  await loadRoom()  // 等待房間載入完成
   loadTopics()
   loadTimerSettings() // 載入計時器設置
     
@@ -1285,6 +1463,9 @@ onMounted(async () => {
     fetchQuestions() // 首次獲取
     dataPoller = setInterval(fetchQuestions, 5000)
   }, 100)
+
+  fetchParticipants()
+  setInterval(fetchParticipants, 5000)
 })
 
 onBeforeUnmount(() => {
@@ -2190,5 +2371,100 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 1.5rem;
+}
+
+/* 房間資訊設定樣式 */
+.room-info-settings h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1.1rem;
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+/* 顯示模式樣式 */
+.room-info-display {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.room-info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.room-info-item label {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+
+.room-info-value {
+  padding: 0.5rem 0.75rem;
+  background-color: var(--color-background-soft);
+  border: 1.5px solid var(--color-border);
+  border-radius: 6px;
+  color: var(--color-text);
+  font-size: 0.9rem;
+  min-height: 20px;
+}
+
+.room-info-actions {
+  margin-top: 0.5rem;
+}
+
+/* 編輯模式樣式 */
+.room-info-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.room-info-form .form-group {
+  margin-bottom: 0;
+}
+
+.room-info-form .form-group label {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+
+.form-input {
+  padding: 0.5rem 0.75rem;
+  border: 1.5px solid var(--color-border);
+  border-radius: 6px;
+  background-color: var(--color-background-soft);
+  color: var(--color-text);
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
+
+.form-input:disabled {
+  background-color: var(--color-background-mute);
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+}
+
+.form-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.form-actions .btn {
+  flex: 1;
+}
+
+.form-actions .btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 </style>

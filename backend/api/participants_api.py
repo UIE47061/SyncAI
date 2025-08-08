@@ -966,6 +966,68 @@ class AllowJoinRequest(BaseModel):
     room: str
     allow_join: bool
 
+class UpdateRoomInfoRequest(BaseModel):
+    room: str
+    new_title: str
+    new_host: str
+
+# 修改房間資訊
+@router.post("/api/room_update_info")
+def update_room_info(data: UpdateRoomInfoRequest):
+    """
+    修改房間資訊
+
+    [POST] /api/room_update_info
+
+    描述：
+    修改指定房間的名稱和主持人資訊。
+
+    參數：
+    - room (str): 房間代碼
+    - new_title (str): 新的房間名稱
+    - new_host (str): 新的主持人名稱
+
+    回傳：
+    - success (bool): 是否成功修改
+    - room_code (str): 房間代碼
+    - new_title (str): 新房間名稱
+    - new_host (str): 新主持人名稱
+    """
+    room = data.room.strip()
+    new_title = data.new_title.strip()
+    new_host = data.new_host.strip()
+    
+    # 驗證輸入
+    if not room:
+        return {"success": False, "error": "房間代碼不能為空"}
+    
+    if not new_title:
+        return {"success": False, "error": "房間名稱不能為空"}
+        
+    if not new_host:
+        return {"success": False, "error": "主持人名稱不能為空"}
+    
+    if len(new_title) > 50:
+        return {"success": False, "error": "房間名稱不能超過50個字元"}
+        
+    if len(new_host) > 20:
+        return {"success": False, "error": "主持人名稱不能超過20個字元"}
+
+    # 檢查房間是否存在
+    if room not in ROOMS:
+        return {"success": False, "error": "房間不存在"}
+    
+    # 更新房間資訊
+    ROOMS[room]["title"] = new_title
+    ROOMS[room]["host"] = new_host
+    
+    return {
+        "success": True,
+        "room_code": room,
+        "new_title": new_title,
+        "new_host": new_host
+    }
+
 # 設定房間是否允許新參與者加入
 @router.post("/api/room_allow_join")
 def set_room_allow_join(data: AllowJoinRequest):
