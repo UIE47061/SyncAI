@@ -716,11 +716,32 @@ async function fetchQuestions() {
 }
 
 // 意見操作
-function deleteQuestion(id) {
-  if (confirm('確定要刪除這個意見嗎？')) {
-    questions.value = questions.value.filter(q => q.id !== id)
-    room.value.questions = questions.value
-    saveRoom()
+async function deleteQuestion(id) {
+  if (!roomCode.value) return
+  if (!id) return
+  if (!confirm('確定要刪除這個意見嗎？')) return
+
+  try {
+    const resp = await fetch(`${API_BASE_URL}/api/room_comment_single`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ room: roomCode.value, comment_id: id })
+    })
+
+    if (!resp.ok) {
+      throw new Error(`HTTP ${resp.status}`)
+    }
+    const data = await resp.json()
+    if (data.success) {
+      // 重新抓取列表以確保票數與內容同步
+      await fetchQuestions()
+      showNotification('已刪除意見', 'success')
+    } else {
+      showNotification(data.error || '刪除失敗', 'error')
+    }
+  } catch (e) {
+    console.error('刪除意見失敗:', e)
+    showNotification('刪除失敗，請稍後再試', 'error')
   }
 }
 

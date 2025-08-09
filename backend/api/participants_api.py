@@ -652,6 +652,10 @@ class VoteRequest(BaseModel):
     device_id: str
     vote_type: str  # "good" 或 "bad"
 
+class DeleteCommentRequest(BaseModel):
+    room: str
+    comment_id: str
+
 # 取得所有留言，回傳順序依 ts 時間升冪
 @router.get("/api/room_comments")
 def get_room_comments(room: str):
@@ -740,6 +744,70 @@ def add_comment(data: CommentRequest):
     
     topics[topic_id]["comments"].append(new_comment)
     return {"success": True, "comment_id": comment_id}
+
+@router.delete("/api/room_comment_single")
+def delete_comment_single(data: DeleteCommentRequest):
+    """
+    刪除單一留言與其投票紀錄
+
+    [DELETE] /api/room_comment_single
+
+    描述：
+    傳入房號與留言 ID，刪除該留言與其所有投票紀錄（good/bad）。
+
+    參數：
+    - room (str): 房間代碼
+    - comment_id (str): 留言ID
+
+    回傳：
+    - success (bool): 是否刪除成功
+    - comment_id (str): 已刪除的留言ID
+    - topic (str): 所屬主題名稱（若找到）
+    - deleted_votes_count (int): 被清除的投票紀錄數量
+    """
+    room = (data.room or "").strip()
+    comment_id = (data.comment_id or "").strip()
+
+    if not room or not comment_id:
+        return {"success": False, "error": "參數不完整"}
+
+    if room not in ROOMS:
+        return {"success": False, "error": "房間不存在"}
+
+    # 在該房間的所有主題中尋找該留言
+    found = False
+    affected_topic_name = None
+
+    for topic_key, topic_obj in list(topics.items()):
+        if topic_obj.get("room_id") != room:
+            continue
+        comments_list = topic_obj.get("comments", [])
+        # 找到索引以便安全移除
+        idx = next((i for i, c in enumerate(comments_list) if c.get("id") == comment_id), None)
+        if idx is not None:
+            # 紀錄主題名稱（若不存在則回傳空字串）
+            affected_topic_name = topic_obj.get("topic_name", "")
+            # 移除該留言
+            comments_list.pop(idx)
+            found = True
+            break
+
+    if not found:
+        return {"success": False, "error": "留言不存在"}
+
+    # 刪除對應投票紀錄
+    deleted_votes_count = 0
+    if comment_id in votes:
+        deleted_votes_count += len(votes[comment_id].get("good", []))
+        deleted_votes_count += len(votes[comment_id].get("bad", []))
+        del votes[comment_id]
+
+    return {
+        "success": True,
+        "comment_id": comment_id,
+        "topic": affected_topic_name or "",
+        "deleted_votes_count": deleted_votes_count,
+    }
 
 # 投票功能
 @router.post("/api/questions/vote")
