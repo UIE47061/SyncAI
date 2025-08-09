@@ -48,16 +48,33 @@ body {
   height: 70px; /* 可自訂 */
 }
 
+.nav-brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap; /* 讓副標可換行到下一列 */
+    cursor: pointer; /* 可點擊返回主頁 */
+}
+
 .nav-brand h1 {
     font-size: 1.5rem;
     font-weight: 700;
     color: var(--primary-color);
-    margin-bottom: 0.25rem;
+    margin: 0; /* 與圖示水平置中時不需要底邊距 */
 }
 
 .nav-brand span {
     font-size: 0.875rem;
     color: var(--text-secondary);
+    width: 100%; /* 換行到下一列 */
+    margin-left: 5px;
+}
+
+/* 全站品牌圖示（放在 public/icon.png） */
+.brand-icon {
+    width: 28px;
+    height: 28px;
+    display: inline-block;
 }
 
 .nav-actions {

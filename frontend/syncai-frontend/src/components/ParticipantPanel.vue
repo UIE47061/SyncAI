@@ -1,9 +1,10 @@
 <template>
   <div>
     <!-- 導覽列 -->
-    <nav class="navbar">
+  <nav class="navbar">
       <div class="nav-container">
-        <div class="nav-brand">
+    <div class="nav-brand" @click="router.push('/')" aria-label="返回主頁">
+          <img src="/icon.png" alt="SyncAI" class="brand-icon" />
           <h1>SyncAI</h1>
           <span>參與者</span>
         </div>
