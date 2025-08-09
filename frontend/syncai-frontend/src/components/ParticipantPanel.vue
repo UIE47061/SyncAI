@@ -40,41 +40,36 @@
       <div class="participant-layout">
         <!-- 主題與意見區 - 合併為一個區域 -->
         <div class="topic-questions-container">
-          <div class="combined-panel">
-            <!-- 當前主題區塊 - 突出顯示 -->
-            <div class="topic-section">
-              <div class="topic-header">
-                <i class="fa-solid fa-lightbulb"></i>
-                <h3>當前主題</h3>
-              </div>
-              <div class="current-topic">
-                {{ currentTopic || '等待主持人設定主題' }}
-              </div>
+          <!-- 當前主題區塊 - 突出顯示 -->
+          <div class="topic-section">
+            <div class="topic-header">
+              <i class="fa-solid fa-lightbulb"></i>
+              <h3>當前主題</h3>
             </div>
-            
-            <!-- 分隔線 -->
-            <div class="section-divider"></div>
-            
-            <!-- 提問面板 -->
-            <div class="question-submit-section">
-              <form @submit.prevent="submitQuestion">
-                <textarea 
-                  v-model="newQuestion" 
-                  placeholder="請輸入您的意見..." 
-                  :disabled="roomStatus !== 'Discussion'"
-                  rows="3"
-                  @keydown.ctrl.enter="submitQuestion"
-                  @keydown.meta.enter="submitQuestion"
-                ></textarea>
-                <button 
-                  type="submit" 
-                  class="btn btn-primary" 
-                  :disabled="!newQuestion.trim() || roomStatus !== 'Discussion'"
-                >
-                  <i class="fa-solid fa-paper-plane"></i> 提交意見
-                </button>
-              </form>
+            <div class="current-topic">
+              {{ currentTopic || '等待主持人設定主題' }}
             </div>
+          </div>
+          
+          <!-- 提問面板 -->
+          <div class="question-submit-section">
+            <form @submit.prevent="submitQuestion">
+              <textarea 
+                v-model="newQuestion" 
+                placeholder="請輸入您的意見..." 
+                :disabled="roomStatus !== 'Discussion'"
+                rows="3"
+                @keydown.ctrl.enter="submitQuestion"
+                @keydown.meta.enter="submitQuestion"
+              ></textarea>
+              <button 
+                type="submit" 
+                class="btn btn-primary" 
+                :disabled="!newQuestion.trim() || roomStatus !== 'Discussion'"
+              >
+                <i class="fa-solid fa-paper-plane"></i> 提交意見
+              </button>
+            </form>
           </div>
         </div>
         
@@ -94,42 +89,44 @@
           <div v-else class="question-list">
             <div v-for="q in sortedQuestions" :key="q.id" class="question-item">
               <div class="question-header">
-                <div v-if="q.answered" class="answered-tag">
-                  <i class="fa-solid fa-check"></i> 已回答
+                <div class="question-meta">
+                  <div class="meta-item" v-if="q.nickname">
+                    <i class="meta-icon fa-regular fa-user"></i>
+                    <span>{{ q.nickname }}</span>
+                  </div>
+                  <div class="meta-item">
+                    <i class="meta-icon fa-regular fa-clock"></i>
+                    <span>{{ formatTime(q.ts) }}</span>
+                  </div>
                 </div>
-                <div class="question-votes">
-                  <button 
-                    class="vote-button vote-good" 
-                    @click="voteQuestion(q.id, 'good')" 
-                    :disabled="q.answered || roomStatus !== 'Discussion'"
-                    :class="{'voted': hasVotedGood(q.id)}"
-                  >
-                    <i class="vote-icon fa-solid fa-thumbs-up"></i>
-                    <span class="vote-count">{{ q.vote_good || 0 }}</span>
-                  </button>
-                  <button 
-                    class="vote-button vote-bad" 
-                    @click="voteQuestion(q.id, 'bad')" 
-                    :disabled="q.answered || roomStatus !== 'Discussion'"
-                    :class="{'voted': hasVotedBad(q.id)}"
-                  >
-                    <i class="vote-icon fa-solid fa-thumbs-down"></i>
-                    <span class="vote-count">{{ q.vote_bad || 0 }}</span>
-                  </button>
+                <div class="question-left">
+                  <div v-if="q.answered" class="answered-tag">
+                    <i class="fa-solid fa-check"></i> 已回答
+                  </div>
+                  <div class="question-votes">
+                    <button 
+                      class="vote-button vote-good" 
+                      @click="voteQuestion(q.id, 'good')" 
+                      :disabled="q.answered || roomStatus !== 'Discussion'"
+                      :class="{'voted': hasVotedGood(q.id)}"
+                    >
+                      <i class="vote-icon fa-solid fa-thumbs-up"></i>
+                      <span class="vote-count">{{ q.vote_good || 0 }}</span>
+                    </button>
+                    <button 
+                      class="vote-button vote-bad" 
+                      @click="voteQuestion(q.id, 'bad')" 
+                      :disabled="q.answered || roomStatus !== 'Discussion'"
+                      :class="{'voted': hasVotedBad(q.id)}"
+                    >
+                      <i class="vote-icon fa-solid fa-thumbs-down"></i>
+                      <span class="vote-count">{{ q.vote_bad || 0 }}</span>
+                    </button>
+                  </div>
                 </div>
               </div>
               <div class="question-content">
                 {{ q.content }}
-              </div>
-              <div class="question-meta">
-                <div class="meta-item">
-                  <i class="meta-icon fa-regular fa-clock"></i>
-                  <span>{{ formatTime(q.ts) }}</span>
-                </div>
-                <div class="meta-item" v-if="q.nickname">
-                  <i class="meta-icon fa-regular fa-user"></i>
-                  <span>{{ q.nickname }}</span>
-                </div>
               </div>
             </div>
           </div>
@@ -935,16 +932,16 @@ function goHome() {
   padding: 1rem 0;
 }
 
-/* 從 participant.css 整合而來（僅保留本元件實際使用的樣式） */
 .participant-content {
   padding: 1.5rem 1rem;
 }
 
 .participant-layout {
-  max-width: 1080px;
+  max-width: 1400px;
   margin: 0 auto;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr; /* 手機預設單欄（上下） */
+  gap: 24px;
 }
 
 .nav-actions {
@@ -956,7 +953,14 @@ function goHome() {
 .topic-questions-container {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  box-shadow: var(--shadow);
+  padding: 0;
+  color: var(--text-primary);
+  overflow: hidden;
+  transition: all 0.3s ease;
 }
 
 .room-info {
@@ -968,22 +972,8 @@ function goHome() {
   color: var(--primary-color);
 }
 
-/* 其餘舊版 participant.css 未使用的選擇器（ask-*, question-card 等）已移除 */
-
 /* 合併面板樣式 - 參考主持人頁面配色 */
-.combined-panel {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 1rem;
-  box-shadow: var(--shadow);
-  padding: 0;
-  color: var(--text-primary);
-  margin-bottom: 24px;
-  overflow: hidden;
-  transition: all 0.3s ease;
-}
-
-.combined-panel:hover {
+.topic-questions-container:hover {
   box-shadow: var(--shadow-lg);
 }
 
@@ -1042,13 +1032,6 @@ function goHome() {
   z-index: 1;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-}
-
-/* 分隔線 */
-.section-divider {
-  height: 1px;
-  background: linear-gradient(90deg, transparent 0%, var(--border) 50%, transparent 100%);
-  margin: 0;
 }
 
 /* 提問區塊 - 使用統一的配色 */
@@ -1170,7 +1153,6 @@ function goHome() {
   padding: 24px 28px;
   color: var(--text-primary);
   min-width: 0;
-  grid-column: 1 / -1;
   overflow-y: auto;
   transition: all 0.3s ease;
 }
@@ -1183,7 +1165,7 @@ function goHome() {
   display: flex;
   align-items: center;
   gap: 12px;
-  font-size: 1.25rem;
+  font-size: 1.2rem;
   font-weight: 600;
   margin-bottom: 20px;
   color: var(--text-primary);
@@ -1221,6 +1203,12 @@ function goHome() {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 12px;
+}
+
+.question-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .question-votes {
@@ -1299,7 +1287,6 @@ function goHome() {
 .question-meta {
   font-size: 0.875rem;
   color: var(--text-secondary);
-  margin-top: 12px;
   display: flex;
   gap: 16px;
 }
@@ -1365,7 +1352,7 @@ function goHome() {
     font-size: 1.1rem;
   }
   
-  .combined-panel {
+  .topic-questions-container {
     border-radius: 12px;
   }
   
@@ -1391,6 +1378,24 @@ function goHome() {
   }
 }
 
+/* 桌面佈局：左右兩欄 */
+@media (min-width: 1024px) {
+  .participant-layout {
+    grid-template-columns: 1fr 1.35fr; /* 左：主題與提問；右：意見列表 */
+    align-items: start; /* 避免等高拉伸 */
+  }
+
+  /* 兩欄模式下移除左側卡片的下邊距，使用欄間距 */
+  .topic-questions-container {
+    margin-bottom: 0;
+  }
+
+  /* 讓右側卡片不再跨欄，正常佔據第二欄 */
+  .questions-panel {
+    grid-column: auto;
+  }
+}
+
 @media (max-width: 480px) {
   .participant-content {
     padding: 16px 12px;
@@ -1405,19 +1410,12 @@ function goHome() {
   
   .nav-brand {
     margin-bottom: 10px;
+    flex-wrap: nowrap;
   }
   
   .nav-actions {
     width: 100%;
     justify-content: space-between;
-  }
-  
-  .topic-questions-container {
-    gap: 16px;
-  }
-  
-  .combined-panel {
-    border-radius: 10px;
   }
   
   .topic-section {
