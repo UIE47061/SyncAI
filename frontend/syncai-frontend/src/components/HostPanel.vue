@@ -551,7 +551,8 @@ const sortedQuestions = computed(() => {
       return aBad - bBad
     })
   }
-  return arr.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+  // 由新到舊（使用留言時間戳 ts）
+  return arr.sort((a, b) => (b.ts || 0) - (a.ts || 0))
 })
 
 // 取得 Room 資訊
