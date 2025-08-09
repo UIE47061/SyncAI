@@ -916,6 +916,8 @@ function removeNotification(i) {
     padding: 10px 20px;
     font-size: 14px;
     border-radius: 6px;
+    width: 100%;
+    justify-content: center;
   }
   
   /* 空狀態優化 */
@@ -972,11 +974,6 @@ function removeNotification(i) {
   .form-row .form-actions {
     flex-direction: column;
     gap: 8px;
-  }
-  
-  .btn-sm {
-    width: 100%;
-    justify-content: center;
   }
   
   /* 導覽列響應式 */
