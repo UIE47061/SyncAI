@@ -926,7 +926,6 @@ function goHome() {
 
 <style scoped>
 @import url('../assets/styles.css');
-@import url('../assets/participant.css');
 
 /* 整體布局 - 覆蓋和擴展共享樣式 */
 .navbar {
@@ -936,7 +935,40 @@ function goHome() {
   padding: 1rem 0;
 }
 
-/* 其他樣式都在 participant.css 中定義 */
+/* 從 participant.css 整合而來（僅保留本元件實際使用的樣式） */
+.participant-content {
+  padding: 1.5rem 1rem;
+}
+
+.participant-layout {
+  max-width: 1080px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.topic-questions-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.room-info {
+  color: #b6c6e6;
+  font-size: 1.08em;
+}
+
+.room-info strong {
+  color: var(--primary-color);
+}
+
+/* 其餘舊版 participant.css 未使用的選擇器（ask-*, question-card 等）已移除 */
 
 /* 合併面板樣式 - 參考主持人頁面配色 */
 .combined-panel {
@@ -1432,7 +1464,7 @@ function goHome() {
   align-items: center;
   z-index: 3000;
   backdrop-filter: blur(8px);
-  animation: fadeIn 0.3s ease;
+  animation: fadeIn 0.2s ease;
 }
 
 .name-modal {
@@ -1565,15 +1597,6 @@ function goHome() {
   border-color: var(--text-secondary);
 }
 
-@keyframes fadeIn {
-  from { 
-    opacity: 0; 
-  }
-  to { 
-    opacity: 1; 
-  }
-}
-
 @keyframes modalSlideUp {
   from { 
     opacity: 0;
@@ -1672,7 +1695,7 @@ function goHome() {
   align-items: center;
   z-index: 3000;
   backdrop-filter: blur(8px);
-  animation: fadeIn 0.3s ease;
+  animation: fadeIn 0.2s ease;
 }
 
 .nickname-edit-modal {

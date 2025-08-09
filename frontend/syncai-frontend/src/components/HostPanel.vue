@@ -1962,7 +1962,7 @@ onBeforeUnmount(() => {
   justify-content: center;
   align-items: center;
   z-index: 2000;
-  animation: fadeIn 0.3s;
+  animation: fadeIn 0.2s;
   backdrop-filter: blur(4px);
 }
 
@@ -2078,11 +2078,6 @@ onBeforeUnmount(() => {
   background-color: #f3f4f6;
   color: #374151;
   border: 1px solid #d1d5db;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
 }
 
 @keyframes modalSlideUp {
