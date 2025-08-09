@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Request, HTTPException, Body
 from pydantic import BaseModel
+from typing import Optional
 import random, string, time
 
 router = APIRouter()
@@ -24,7 +25,6 @@ ROOMS = {}
     room_id: {
         "code": str,
         "title": str,
-        "host": str,
         "created_at": float,  # timestamp
         "settings": {"allowQuestions": bool, "allowVoting": bool},
         "status": str,  # NotFound, Stop, Discussion, End
@@ -59,7 +59,11 @@ votes = {}
 
 class RoomCreate(BaseModel):
     title: str
-    host: str
+    topic: str
+    topic_summary: Optional[str] = None
+    desired_outcome: Optional[str] = None
+    topic_count: int = 1  # 1~5
+    countdown: int = 15 * 60  # 預設15分鐘
 
 @router.post("/api/create_room")
 def create_room(room: RoomCreate):
@@ -69,11 +73,15 @@ def create_room(room: RoomCreate):
     [POST] /api/create_room
 
     描述：
-    建立一個新的會議室，需提供會議室標題與主持人名稱。
+    建立一個新的會議室。
 
     參數：
     - room.title (str): 會議室標題
-    - room.host (str): 主持人名稱
+    - room.topic (str): 第一個主題名稱
+    - room.topic_summary (str, 選填): 題目摘要資訊
+    - room.desired_outcome (str, 選填): 想達到效果
+    - room.topic_count (int): 問題/主題數量 (1~5)
+    - room.countdown (int): 預設倒數時間（秒）
 
     回傳：
     - code (str): 房間代碼
@@ -81,28 +89,47 @@ def create_room(room: RoomCreate):
     code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
     while code in ROOMS:
         code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+    # 正規化輸入
+    title = room.title.strip()
+    topic = room.topic.strip() or "主題 1"
+    topic_count = max(1, min(5, int(room.topic_count or 1)))
+    countdown = int(room.countdown or 0)
+    countdown = max(0, countdown)
+
     ROOMS[code] = {
         "code": code,
-        "title": room.title,
-        "host": room.host,
+        "title": title,
         "created_at": get_current_timestamp(),
         "participants": 0,
         "settings": {"allowQuestions": True, "allowVoting": True},
         "status": "Stop",  # 初始化房間狀態為 Stop
         "participants_list": [],  # 參與者列表
-        "current_topic": "主題 1",
-        "countdown": 0,
-        "time_start": 0
+        "current_topic": topic,
+        "countdown": countdown,
+        "time_start": 0,
+        # 新增建立時的描述資訊與預設時長
+        "topic_summary": (room.topic_summary or "").strip(),
+        "desired_outcome": (room.desired_outcome or "").strip(),
+        "topic_count": topic_count,
     }
-    topics[f"{code}_主題 1"] = {
+    # 建立主題列表：第一個使用指定題目，其餘為 主題 2..N
+    # 第一個主題
+    topics[f"{code}_{topic}"] = {
         "room_id": code,
-        "topic_name": "主題 1",
-        "comments": []
+        "topic_name": topic,
+        "comments": [],
     }
+    # 額外主題
+    for i in range(2, topic_count + 1):
+        tname = f"主題 {i}"
+        topics[f"{code}_{tname}"] = {
+            "room_id": code,
+            "topic_name": tname,
+            "comments": [],
+        }
     return {
         "code": ROOMS[code]["code"],
         "title": ROOMS[code]["title"],
-        "host": ROOMS[code]["host"],
         "created_at": ROOMS[code]["created_at"],
         "participants": ROOMS[code]["participants"],
         "settings": ROOMS[code]["settings"]
@@ -119,7 +146,7 @@ def get_rooms():
     獲取所有已建立的會議室資訊。
 
     回傳：
-    - rooms (list): 所有會議室的資訊列表，每個房間包含 code、title、host、created_at、participants、status。
+    - rooms (list): 所有會議室的資訊列表，每個房間包含 code、title、created_at、participants、status、current_topic、topic_count、topic_summary、desired_outcome、countdown。
     """
     # 將房間狀態加入到每個房間資訊中
     rooms = []
@@ -127,10 +154,14 @@ def get_rooms():
         room_info = {
             "code": room["code"],
             "title": room["title"],
-            "host": room["host"],
             "created_at": room["created_at"],
             "participants": room["participants"],
-            "status": room["status"]
+            "status": room["status"],
+            "current_topic": room.get("current_topic", ""),
+            "topic_count": room.get("topic_count", 1),
+            "topic_summary": room.get("topic_summary", ""),
+            "desired_outcome": room.get("desired_outcome", ""),
+            "countdown": room.get("countdown", 0),
         }
         rooms.append(room_info)
     return {"rooms": rooms}
@@ -182,7 +213,15 @@ def join_participant(data: JoinRequest):
         found['nickname'] = nickname  # 更新暱稱
     else:
         ROOMS[room]["participants_list"].append({"device_id": device_id, "nickname": nickname, "last_seen": now})
-    
+
+    # 更新房間參與者人數（以在線人數為準，10秒內視為在線）
+    try:
+        online_count = sum(1 for p in ROOMS[room]["participants_list"] if (now - p["last_seen"]) <= 10)
+        ROOMS[room]["participants"] = online_count
+    except Exception:
+        # 後備：若出錯則使用列表長度
+        ROOMS[room]["participants"] = len(ROOMS[room].get("participants_list", []))
+
     return {"success": True}
 
 class HeartbeatRequest(BaseModel):
@@ -239,6 +278,12 @@ def participant_heartbeat(data: HeartbeatRequest):
         if p['device_id'] == device_id:
             p['last_seen'] = now
             break
+    # 更新在線人數
+    try:
+        online_count = sum(1 for p in ROOMS[room]["participants_list"] if (now - p["last_seen"]) <= 10)
+        ROOMS[room]["participants"] = online_count
+    except Exception:
+        ROOMS[room]["participants"] = len(ROOMS[room].get("participants_list", []))
     return {"success": True}
 
 @router.get("/api/participants")
@@ -951,10 +996,12 @@ def get_all_rooms():
     [GET] /api/all_rooms
 
     描述：
-    獲取所有房間的資訊，包括房間代碼、標題和主持人名稱。
+    獲取所有房間的資訊（調試用）。
 
     返回值：
-    - rooms (list): 所有房間的資訊列表，每個房間包含 room_id、title 和 host
+    - rooms (list): 所有房間的資訊列表
+    - topics (list): 所有主題的資訊列表
+    - votes (dict): 所有投票的資訊
     """
     return {
         "ROOMS": ROOMS, 
@@ -969,7 +1016,7 @@ class AllowJoinRequest(BaseModel):
 class UpdateRoomInfoRequest(BaseModel):
     room: str
     new_title: str
-    new_host: str
+    new_summary: Optional[str] = None
 
 # 修改房間資訊
 @router.post("/api/room_update_info")
@@ -980,22 +1027,21 @@ def update_room_info(data: UpdateRoomInfoRequest):
     [POST] /api/room_update_info
 
     描述：
-    修改指定房間的名稱和主持人資訊。
+    修改指定房間的名稱與摘要資訊。
 
     參數：
     - room (str): 房間代碼
     - new_title (str): 新的房間名稱
-    - new_host (str): 新的主持人名稱
+    - new_summary (str): 新的題目摘要資訊（可為空字串）
 
     回傳：
     - success (bool): 是否成功修改
     - room_code (str): 房間代碼
     - new_title (str): 新房間名稱
-    - new_host (str): 新主持人名稱
     """
     room = data.room.strip()
     new_title = data.new_title.strip()
-    new_host = data.new_host.strip()
+    new_summary = None if data.new_summary is None else (data.new_summary or "").strip()
     
     # 驗證輸入
     if not room:
@@ -1004,14 +1050,12 @@ def update_room_info(data: UpdateRoomInfoRequest):
     if not new_title:
         return {"success": False, "error": "房間名稱不能為空"}
         
-    if not new_host:
-        return {"success": False, "error": "主持人名稱不能為空"}
-    
     if len(new_title) > 50:
         return {"success": False, "error": "房間名稱不能超過50個字元"}
-        
-    if len(new_host) > 20:
-        return {"success": False, "error": "主持人名稱不能超過20個字元"}
+    
+    # 限制摘要長度，避免過長內容
+    if new_summary is not None and len(new_summary) > 2000:
+        return {"success": False, "error": "摘要資訊不能超過2000個字元"}
 
     # 檢查房間是否存在
     if room not in ROOMS:
@@ -1019,13 +1063,14 @@ def update_room_info(data: UpdateRoomInfoRequest):
     
     # 更新房間資訊
     ROOMS[room]["title"] = new_title
-    ROOMS[room]["host"] = new_host
+    if new_summary is not None:
+        ROOMS[room]["topic_summary"] = new_summary
     
     return {
         "success": True,
         "room_code": room,
         "new_title": new_title,
-        "new_host": new_host
+        "topic_summary": ROOMS[room].get("topic_summary", "")
     }
 
 # 設定房間是否允許新參與者加入

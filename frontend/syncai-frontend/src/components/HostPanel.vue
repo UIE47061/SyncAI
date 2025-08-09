@@ -160,11 +160,11 @@
           <div class="panel-header">
             <h2>控制區</h2>
             <div class="panel-tabs">
-              <button :class="{ active: controlTab === 'info' }" @click="controlTab = 'info'" title="會議資訊">
-                <i class="fa-solid fa-link"></i>
-              </button>
               <button :class="{ active: controlTab === 'control' }" @click="controlTab = 'control'" title="會議控制">
                 <i class="fa-solid fa-gear"></i>
+              </button>
+              <button :class="{ active: controlTab === 'info' }" @click="controlTab = 'info'" title="會議資訊">
+                <i class="fa-solid fa-link"></i>
               </button>
               <button :class="{ active: controlTab === 'members' }" @click="controlTab = 'members'" title="成員名單">
                 <i class="fa-solid fa-users"></i>
@@ -207,8 +207,8 @@
                       <div class="room-info-value">{{ room?.title || '載入中...' }}</div>
                     </div>
                     <div class="room-info-item">
-                      <label>主持人名稱</label>
-                      <div class="room-info-value">{{ room?.host || '載入中...' }}</div>
+                      <label>摘要資訊</label>
+                      <div class="room-info-value" style="white-space: pre-wrap;">{{ room?.topic_summary || '（尚未填寫）' }}</div>
                     </div>
                     <div class="room-info-actions">
                       <button class="btn btn-outline btn-sm" @click="startEditRoomInfo">
@@ -234,23 +234,20 @@
                       </div>
                     </div>
                     <div class="form-group">
-                      <label for="edit-room-host">主持人名稱</label>
-                      <div class="input-with-btn">
-                        <input 
-                          id="edit-room-host"
-                          type="text" 
-                          v-model="editRoomHost" 
-                          :placeholder="room?.host || '主持人名稱'"
-                          maxlength="20"
-                          class="form-input"
-                        />
-                      </div>
+                      <label for="edit-room-summary">摘要資訊</label>
+                      <textarea
+                        id="edit-room-summary"
+                        v-model="editRoomSummary"
+                        placeholder="輸入此會議的摘要資訊..."
+                        rows="4"
+                        class="form-input"
+                      ></textarea>
                     </div>
                     <div class="form-actions">
                       <button 
                         class="btn btn-primary btn-sm" 
                         @click="updateRoomInfo"
-                        :disabled="!editRoomTitle.trim() || !editRoomHost.trim()"
+                        :disabled="!editRoomTitle.trim()"
                       >
                         <i class="fa-solid fa-check"></i>
                         儲存變更
@@ -439,7 +436,7 @@ import QrcodeVue from 'qrcode.vue'
 import { useRouter } from 'vue-router'
 
 // 控制面板 tab 狀態
-const controlTab = ref('info')
+const controlTab = ref('control')
 function removeParticipant(index) {
   participantsList.value.splice(index, 1)
   showNotification('已移除成員', 'info')
@@ -457,7 +454,8 @@ const roomStatus = ref('NotFound') // 房間狀態：NotFound, Stop, Discussion
 
 // 房間資訊編輯
 const editRoomTitle = ref('')
-const editRoomHost = ref('')
+const editRoomSummary = ref('')
+// 主持人欄位已移除
 const isEditingRoomInfo = ref(false)
 const settings = reactive({ allowQuestions: true, allowVoting: true })
 const sortBy = ref('votes')
@@ -472,6 +470,7 @@ const allowJoin = ref(true)
 // 計時器相關
 const remainingTime = ref(0) // 剩餘時間（以秒為單位）
 const initialTime = ref(0) // 初始設定的時間
+const seededFromBackend = ref(false) // 是否從後端初始化了計時器設定（首次進入）
 const timerRunning = ref(false) // 計時器是否運行中
 const timerInterval = ref(null) // 計時器間隔引用
 const isTimerSettingsVisible = ref(false) // 計時器設定彈窗是否可見
@@ -602,19 +601,48 @@ async function loadRoom() {
       if (data.rooms) {
         const apiRoom = data.rooms.find(r => r.code === code)
         if (apiRoom) {
+          // 從後端帶入預設主題與時間
+          const topicCount = Math.max(1, Math.min(5, apiRoom.topic_count || 1))
+          const currentTopic = apiRoom.current_topic || '主題 1'
+          const topicsArr = []
+          // 先放入目前主題
+          topicsArr.push({ title: currentTopic, questions: [] })
+          // 再補足其餘主題名稱（避免重複）
+          for (let i = 1; i <= topicCount; i++) {
+            const t = `主題 ${i}`
+            if (!topicsArr.find(x => x.title === t)) {
+              topicsArr.push({ title: t, questions: [] })
+            }
+          }
+
           room.value = {
             code: apiRoom.code,
             title: apiRoom.title,
-            host: apiRoom.host,
             createdAt: new Date(apiRoom.created_at * 1000).toISOString(),
             isActive: apiRoom.status !== 'End',
             questions: [],
             settings: { allowQuestions: true, allowVoting: true },
-            topics: [{ title: '主題 1', questions: [] }]
+            topics: topicsArr,
+            topic_summary: apiRoom.topic_summary || ''
           }
           questions.value = []
-          topics.value = [{ title: '主題 1', questions: [] }]
-          
+          topics.value = topicsArr
+
+          // 若尚未有本地計時器設定，使用後端 countdown 作為預設
+      try {
+            const key = `timer_settings_${apiRoom.code}`
+            const saved = localStorage.getItem(key)
+            if (!saved) {
+              const d = Number(apiRoom.countdown || 0)
+              const hours = Math.floor(d / 3600)
+              const minutes = Math.floor((d % 3600) / 60)
+              const seconds = d % 60
+              const init = d > 0 ? { hours, minutes, seconds } : { hours: 0, minutes: 5, seconds: 0 }
+              localStorage.setItem(key, JSON.stringify(init))
+        seededFromBackend.value = true
+            }
+          } catch (e) { /* ignore */ }
+
           // 保存到 localStorage
           saveRoom()
           showNotification('已從服務器獲取房間資訊', 'success')
@@ -972,20 +1000,20 @@ async function setRoomAllowJoin(allowed) {
 function startEditRoomInfo() {
   // 初始化編輯表單
   editRoomTitle.value = room.value?.title || ''
-  editRoomHost.value = room.value?.host || ''
+  editRoomSummary.value = room.value?.topic_summary || ''
   isEditingRoomInfo.value = true
 }
 
 function cancelEditRoomInfo() {
   // 清空編輯表單並返回顯示模式
   editRoomTitle.value = ''
-  editRoomHost.value = ''
+  editRoomSummary.value = ''
   isEditingRoomInfo.value = false
 }
 
 async function updateRoomInfo() {
-  if (!editRoomTitle.value.trim() || !editRoomHost.value.trim()) {
-    showNotification('房間名稱和主持人名稱不能為空', 'error')
+  if (!editRoomTitle.value.trim()) {
+    showNotification('房間名稱不能為空', 'error')
     return
   }
   
@@ -998,7 +1026,7 @@ async function updateRoomInfo() {
       body: JSON.stringify({
         room: roomCode.value,
         new_title: editRoomTitle.value.trim(),
-        new_host: editRoomHost.value.trim()
+        new_summary: editRoomSummary.value
       })
     })
     
@@ -1008,13 +1036,13 @@ async function updateRoomInfo() {
       // 更新本地的房間資料
       if (room.value) {
         room.value.title = data.new_title
-        room.value.host = data.new_host
+        room.value.topic_summary = data.topic_summary || ''
       }
       
       // 退出編輯模式
       isEditingRoomInfo.value = false
       editRoomTitle.value = ''
-      editRoomHost.value = ''
+      editRoomSummary.value = ''
       
       showNotification('房間資訊更新成功', 'success')
     } else {
@@ -1028,7 +1056,7 @@ async function updateRoomInfo() {
 
 function resetRoomInfoForm() {
   editRoomTitle.value = room.value?.title || ''
-  editRoomHost.value = room.value?.host || ''
+  editRoomSummary.value = room.value?.topic_summary || ''
 }
 
 // 側邊欄相關函數
@@ -1521,10 +1549,19 @@ async function setRoomState() {
 
 let roomPoller
 let dataPoller
+let participantsPoller
 onMounted(async () => {
   await loadRoom()  // 等待房間載入完成
   loadTopics()
   loadTimerSettings() // 載入計時器設置
+  // 若首次進入且尚未運行，且已有預設時間，則自動開始計時並同步為討論中
+  try {
+    const savedRunning = localStorage.getItem(`timer_running_${roomCode.value}`)
+    if (seededFromBackend.value && savedRunning !== 'true' && remainingTime.value > 0 && !timerRunning.value) {
+      await setRoomState() // 會同時將狀態設為 Discussion
+      await startTimer()
+    }
+  } catch (e) { /* ignore */ }
     
   // 添加窗口大小變化的監聽器
   window.addEventListener('resize', updateQRCodeSize)
@@ -1546,7 +1583,7 @@ onMounted(async () => {
   }, 100)
 
   fetchParticipants()
-  setInterval(fetchParticipants, 5000)
+  participantsPoller = setInterval(fetchParticipants, 5000)
 })
 
 onBeforeUnmount(() => {
@@ -1554,6 +1591,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', updateQRCodeSize)
   clearInterval(dataPoller)
   clearInterval(roomPoller)
+  clearInterval(participantsPoller)
   
   // 停止計時器
   if (timerInterval.value) {
