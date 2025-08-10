@@ -1,9 +1,10 @@
 <template>
   <div>
     <!-- 導覽列 -->
-    <nav class="navbar">
+  <nav class="navbar">
       <div class="nav-container">
-        <div class="nav-brand">
+    <div class="nav-brand" @click="router.push('/')" aria-label="返回主頁">
+          <img src="/icon.png" alt="SyncAI" class="brand-icon" />
           <h1>SyncAI</h1>
           <span>主持人面板</span>
         </div>
@@ -160,11 +161,11 @@
           <div class="panel-header">
             <h2>控制區</h2>
             <div class="panel-tabs">
-              <button :class="{ active: controlTab === 'info' }" @click="controlTab = 'info'" title="會議資訊">
-                <i class="fa-solid fa-link"></i>
-              </button>
               <button :class="{ active: controlTab === 'control' }" @click="controlTab = 'control'" title="會議控制">
                 <i class="fa-solid fa-gear"></i>
+              </button>
+              <button :class="{ active: controlTab === 'info' }" @click="controlTab = 'info'" title="會議資訊">
+                <i class="fa-solid fa-link"></i>
               </button>
               <button :class="{ active: controlTab === 'members' }" @click="controlTab = 'members'" title="成員名單">
                 <i class="fa-solid fa-users"></i>
@@ -207,8 +208,8 @@
                       <div class="room-info-value">{{ room?.title || '載入中...' }}</div>
                     </div>
                     <div class="room-info-item">
-                      <label>主持人名稱</label>
-                      <div class="room-info-value">{{ room?.host || '載入中...' }}</div>
+                      <label>摘要資訊</label>
+                      <div class="room-info-value" style="white-space: pre-wrap;">{{ room?.topic_summary || '（尚未填寫）' }}</div>
                     </div>
                     <div class="room-info-actions">
                       <button class="btn btn-outline btn-sm" @click="startEditRoomInfo">
@@ -234,23 +235,20 @@
                       </div>
                     </div>
                     <div class="form-group">
-                      <label for="edit-room-host">主持人名稱</label>
-                      <div class="input-with-btn">
-                        <input 
-                          id="edit-room-host"
-                          type="text" 
-                          v-model="editRoomHost" 
-                          :placeholder="room?.host || '主持人名稱'"
-                          maxlength="20"
-                          class="form-input"
-                        />
-                      </div>
+                      <label for="edit-room-summary">摘要資訊</label>
+                      <textarea
+                        id="edit-room-summary"
+                        v-model="editRoomSummary"
+                        placeholder="輸入此會議的摘要資訊..."
+                        rows="4"
+                        class="form-input"
+                      ></textarea>
                     </div>
                     <div class="form-actions">
                       <button 
                         class="btn btn-primary btn-sm" 
                         @click="updateRoomInfo"
-                        :disabled="!editRoomTitle.trim() || !editRoomHost.trim()"
+                        :disabled="!editRoomTitle.trim()"
                       >
                         <i class="fa-solid fa-check"></i>
                         儲存變更
@@ -439,7 +437,7 @@ import QrcodeVue from 'qrcode.vue'
 import { useRouter } from 'vue-router'
 
 // 控制面板 tab 狀態
-const controlTab = ref('info')
+const controlTab = ref('control')
 function removeParticipant(index) {
   participantsList.value.splice(index, 1)
   showNotification('已移除成員', 'info')
@@ -457,7 +455,8 @@ const roomStatus = ref('NotFound') // 房間狀態：NotFound, Stop, Discussion
 
 // 房間資訊編輯
 const editRoomTitle = ref('')
-const editRoomHost = ref('')
+const editRoomSummary = ref('')
+// 主持人欄位已移除
 const isEditingRoomInfo = ref(false)
 const settings = reactive({ allowQuestions: true, allowVoting: true })
 const sortBy = ref('votes')
@@ -472,6 +471,7 @@ const allowJoin = ref(true)
 // 計時器相關
 const remainingTime = ref(0) // 剩餘時間（以秒為單位）
 const initialTime = ref(0) // 初始設定的時間
+const seededFromBackend = ref(false) // 是否從後端初始化了計時器設定（首次進入）
 const timerRunning = ref(false) // 計時器是否運行中
 const timerInterval = ref(null) // 計時器間隔引用
 const isTimerSettingsVisible = ref(false) // 計時器設定彈窗是否可見
@@ -552,7 +552,8 @@ const sortedQuestions = computed(() => {
       return aBad - bBad
     })
   }
-  return arr.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+  // 由新到舊（使用留言時間戳 ts）
+  return arr.sort((a, b) => (b.ts || 0) - (a.ts || 0))
 })
 
 // 取得 Room 資訊
@@ -602,19 +603,48 @@ async function loadRoom() {
       if (data.rooms) {
         const apiRoom = data.rooms.find(r => r.code === code)
         if (apiRoom) {
+          // 從後端帶入預設主題與時間
+          const topicCount = Math.max(1, Math.min(5, apiRoom.topic_count || 1))
+          const currentTopic = apiRoom.current_topic || '主題 1'
+          const topicsArr = []
+          // 先放入目前主題
+          topicsArr.push({ title: currentTopic, questions: [] })
+          // 再補足其餘主題名稱（避免重複）
+          for (let i = 1; i <= topicCount; i++) {
+            const t = `主題 ${i}`
+            if (!topicsArr.find(x => x.title === t)) {
+              topicsArr.push({ title: t, questions: [] })
+            }
+          }
+
           room.value = {
             code: apiRoom.code,
             title: apiRoom.title,
-            host: apiRoom.host,
             createdAt: new Date(apiRoom.created_at * 1000).toISOString(),
             isActive: apiRoom.status !== 'End',
             questions: [],
             settings: { allowQuestions: true, allowVoting: true },
-            topics: [{ title: '主題 1', questions: [] }]
+            topics: topicsArr,
+            topic_summary: apiRoom.topic_summary || ''
           }
           questions.value = []
-          topics.value = [{ title: '主題 1', questions: [] }]
-          
+          topics.value = topicsArr
+
+          // 若尚未有本地計時器設定，使用後端 countdown 作為預設
+      try {
+            const key = `timer_settings_${apiRoom.code}`
+            const saved = localStorage.getItem(key)
+            if (!saved) {
+              const d = Number(apiRoom.countdown || 0)
+              const hours = Math.floor(d / 3600)
+              const minutes = Math.floor((d % 3600) / 60)
+              const seconds = d % 60
+              const init = d > 0 ? { hours, minutes, seconds } : { hours: 0, minutes: 5, seconds: 0 }
+              localStorage.setItem(key, JSON.stringify(init))
+        seededFromBackend.value = true
+            }
+          } catch (e) { /* ignore */ }
+
           // 保存到 localStorage
           saveRoom()
           showNotification('已從服務器獲取房間資訊', 'success')
@@ -686,11 +716,32 @@ async function fetchQuestions() {
 }
 
 // 意見操作
-function deleteQuestion(id) {
-  if (confirm('確定要刪除這個意見嗎？')) {
-    questions.value = questions.value.filter(q => q.id !== id)
-    room.value.questions = questions.value
-    saveRoom()
+async function deleteQuestion(id) {
+  if (!roomCode.value) return
+  if (!id) return
+  if (!confirm('確定要刪除這個意見嗎？')) return
+
+  try {
+    const resp = await fetch(`${API_BASE_URL}/api/room_comment_single`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ room: roomCode.value, comment_id: id })
+    })
+
+    if (!resp.ok) {
+      throw new Error(`HTTP ${resp.status}`)
+    }
+    const data = await resp.json()
+    if (data.success) {
+      // 重新抓取列表以確保票數與內容同步
+      await fetchQuestions()
+      showNotification('已刪除意見', 'success')
+    } else {
+      showNotification(data.error || '刪除失敗', 'error')
+    }
+  } catch (e) {
+    console.error('刪除意見失敗:', e)
+    showNotification('刪除失敗，請稍後再試', 'error')
   }
 }
 
@@ -972,20 +1023,20 @@ async function setRoomAllowJoin(allowed) {
 function startEditRoomInfo() {
   // 初始化編輯表單
   editRoomTitle.value = room.value?.title || ''
-  editRoomHost.value = room.value?.host || ''
+  editRoomSummary.value = room.value?.topic_summary || ''
   isEditingRoomInfo.value = true
 }
 
 function cancelEditRoomInfo() {
   // 清空編輯表單並返回顯示模式
   editRoomTitle.value = ''
-  editRoomHost.value = ''
+  editRoomSummary.value = ''
   isEditingRoomInfo.value = false
 }
 
 async function updateRoomInfo() {
-  if (!editRoomTitle.value.trim() || !editRoomHost.value.trim()) {
-    showNotification('房間名稱和主持人名稱不能為空', 'error')
+  if (!editRoomTitle.value.trim()) {
+    showNotification('房間名稱不能為空', 'error')
     return
   }
   
@@ -998,7 +1049,7 @@ async function updateRoomInfo() {
       body: JSON.stringify({
         room: roomCode.value,
         new_title: editRoomTitle.value.trim(),
-        new_host: editRoomHost.value.trim()
+        new_summary: editRoomSummary.value
       })
     })
     
@@ -1008,13 +1059,13 @@ async function updateRoomInfo() {
       // 更新本地的房間資料
       if (room.value) {
         room.value.title = data.new_title
-        room.value.host = data.new_host
+        room.value.topic_summary = data.topic_summary || ''
       }
       
       // 退出編輯模式
       isEditingRoomInfo.value = false
       editRoomTitle.value = ''
-      editRoomHost.value = ''
+      editRoomSummary.value = ''
       
       showNotification('房間資訊更新成功', 'success')
     } else {
@@ -1028,7 +1079,7 @@ async function updateRoomInfo() {
 
 function resetRoomInfoForm() {
   editRoomTitle.value = room.value?.title || ''
-  editRoomHost.value = room.value?.host || ''
+  editRoomSummary.value = room.value?.topic_summary || ''
 }
 
 // 側邊欄相關函數
@@ -1521,10 +1572,19 @@ async function setRoomState() {
 
 let roomPoller
 let dataPoller
+let participantsPoller
 onMounted(async () => {
   await loadRoom()  // 等待房間載入完成
   loadTopics()
   loadTimerSettings() // 載入計時器設置
+  // 若首次進入且尚未運行，且已有預設時間，則自動開始計時並同步為討論中
+  try {
+    const savedRunning = localStorage.getItem(`timer_running_${roomCode.value}`)
+    if (seededFromBackend.value && savedRunning !== 'true' && remainingTime.value > 0 && !timerRunning.value) {
+      await setRoomState() // 會同時將狀態設為 Discussion
+      await startTimer()
+    }
+  } catch (e) { /* ignore */ }
     
   // 添加窗口大小變化的監聽器
   window.addEventListener('resize', updateQRCodeSize)
@@ -1546,7 +1606,7 @@ onMounted(async () => {
   }, 100)
 
   fetchParticipants()
-  setInterval(fetchParticipants, 5000)
+  participantsPoller = setInterval(fetchParticipants, 5000)
 })
 
 onBeforeUnmount(() => {
@@ -1554,6 +1614,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', updateQRCodeSize)
   clearInterval(dataPoller)
   clearInterval(roomPoller)
+  clearInterval(participantsPoller)
   
   // 停止計時器
   if (timerInterval.value) {
@@ -1564,9 +1625,13 @@ onBeforeUnmount(() => {
 
 <style scoped>
 @import url('../assets/styles.css');
-@import url('../assets/host.css');
 
-/* 更新整體佈局 */
+/* 整體佈局 */
+.host-content {
+    max-width: 1500px;
+    margin: 0 auto;
+    padding: 1.5rem 1rem;
+}
 .host-layout {
   display: grid;
   grid-template-columns: auto 1fr 350px;
@@ -1845,17 +1910,23 @@ onBeforeUnmount(() => {
   color: #aaa;
   margin-top: 6px;
 }
-.share-options {
-  flex: 1 1 0;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
 .code-display {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 4px;
+  margin-top: 1rem;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+}
+
+.code-display span {
+  flex: 1;
+  font-family: 'Space Mono', monospace;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  word-break: break-all;
 }
 /* 手機直排 */
 @media (max-width: 600px) {
@@ -1922,7 +1993,7 @@ onBeforeUnmount(() => {
   justify-content: center;
   align-items: center;
   z-index: 2000;
-  animation: fadeIn 0.3s;
+  animation: fadeIn 0.2s;
   backdrop-filter: blur(4px);
 }
 
@@ -2038,11 +2109,6 @@ onBeforeUnmount(() => {
   background-color: #f3f4f6;
   color: #374151;
   border: 1px solid #d1d5db;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
 }
 
 @keyframes modalSlideUp {
@@ -2308,8 +2374,14 @@ onBeforeUnmount(() => {
   display: flex;
   gap: 12px;
   align-items: center;
+  gap: 0.25rem;
+  background: var(--primary-color);
+  color: white;
+  padding: 0.25rem 0.5rem;
+  border-radius: 1rem;
+  font-size: 0.75rem;
+  font-weight: 500;
 }
-
 /* 意見資訊樣式 */
 .question-info {
   display: flex;
@@ -2332,18 +2404,15 @@ onBeforeUnmount(() => {
   color: var(--primary-color);
 }
 
-.question-time {
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-}
 
-/* 調整 question-meta 布局 */
 .question-meta {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
   margin-top: 12px;
   gap: 16px;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
 }
 
 /* 響應式調整 */
@@ -2407,19 +2476,241 @@ onBeforeUnmount(() => {
   cursor: pointer;
   padding: 4px;
   color: var(--text-secondary);
+  border-radius: 0.25rem;
   transition: color 0.2s;
 }
 
 .btn-icon:hover {
-  color: var(--danger);
+    background: var(--surface);
 }
-</style>
-<style scoped>
+
+/* 以下為從 host.css 整合而來（僅保留本元件實際使用的樣式） */
+/* 導覽列右側行為與房間資訊 */
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.room-info {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.92rem;
+  align-items: center;
+}
+
+.room-code, .participant-count {
+  color: var(--text-secondary);
+}
+
+.room-code strong, .participant-count strong {
+  color: var(--primary-color);
+}
+
+/* 面板樣式 */
+.questions-panel, .control-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  overflow: hidden;
+}
+
 .panel-header {
+  padding: 1.3rem;
+  border-bottom: 1px solid var(--border);
   display: flex;
   justify-content: space-between;
   align-items: center;
+  background: var(--background);
+}
+
+.panel-header h2 {
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.panel-controls {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.panel-controls select {
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+}
+
+/* 問題清單 */
+.questions-container {
+  height: calc(100% - 80px);
+  overflow-y: auto;
   padding: 1rem;
+}
+
+.question-item {
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  transition: all 0.2s;
+}
+
+.question-item:hover {
+  border-color: var(--primary-color);
+  box-shadow: var(--shadow);
+}
+
+.question-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+}
+
+.question-text {
+  font-weight: 500;
+  color: var(--text-primary);
+  flex: 1;
+  margin-right: 1rem;
+}
+
+.question-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--text-secondary);
+}
+
+.empty-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+.empty-state h3 {
+  margin-bottom: 0.5rem;
+  color: var(--text-primary);
+}
+
+/* 控制面板與區段 */
+.control-panel {
+  display: flex;
+  flex-direction: column;
+  max-height: 100vh;
+  overflow-y: auto;
+  min-width: 280px;
+}
+
+.control-section {
+  padding: 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.control-section:last-child {
+  border-bottom: none;
+}
+
+.control-section h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+  color: var(--text-primary);
+}
+
+/* Switch */
+.setting-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--border);
+  transition: 0.3s;
+  border-radius: 24px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: 0.3s;
+  border-radius: 50%;
+}
+
+input:checked + .slider {
+  background-color: var(--primary-color);
+}
+
+input:checked + .slider:before {
+  transform: translateX(20px);
+}
+
+/* 統計 */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+
+.stat-item { text-align: center; }
+
+.stat-number {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--primary-color);
+  margin-bottom: 0.25rem;
+}
+
+.stat-label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+/* 響應式 */
+@media (max-width: 1024px) {
+  .control-panel { order: -1; }
+  .questions-container { height: 500px; }
+}
+
+@media (max-width: 768px) {
+  .room-info {
+    flex-direction: column;
+    gap: 0.5rem;
+    text-align: center;
+  }
+  .stats-grid { grid-template-columns: 1fr; }
+  .panel-controls { flex-direction: column; gap: 0.5rem; }
 }
 </style>
 <style scoped>
