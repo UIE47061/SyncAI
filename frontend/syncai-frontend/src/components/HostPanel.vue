@@ -574,114 +574,105 @@ async function loadRoom() {
   const urlParams = new URLSearchParams(window.location.search)
   const code = urlParams.get('room')
   if (!code) {
-    showNotification('無效的會議室代碼', 'error')
-    setTimeout(() => {
-      router.push('/')
-    }, 2000)
+    // 處理沒有 room code 的情況
     return
   }
   roomCode.value = code
 
-  let roomFound = false
+  // --- 檢查是否為新建立的房間 ---
+  const isNewRoom = urlParams.get('new') === 'true'
 
-  // 從 localStorage 取得資料
   try {
-    const roomsData = localStorage.getItem('Sync_AI_rooms')
-    if (roomsData) {
-      const rooms = new Map(JSON.parse(roomsData))
-      const r = rooms.get(code)
-      if (r) {
-        room.value = r
-        questions.value = r.questions || []
-        Object.assign(settings, r.settings || { allowQuestions: true, allowVoting: true })
-        
-        // 如果房間數據中有主題，則載入它們
-        if (r.topics && r.topics.length > 0) {
-          topics.value = r.topics
+    const resp = await fetch(`${API_BASE_URL}/api/rooms`)
+    if (!resp.ok) throw new Error('無法獲取房間列表')
+    const data = await resp.json()
+    const roomData = data.rooms.find(r => r.code === code)
+
+    if (roomData) {
+      room.value = roomData
+      // 從 roomData 更新 topics
+      const roomTopicsResp = await fetch(`${API_BASE_URL}/api/room_topics?room=${code}`)
+      const roomTopicsData = await roomTopicsResp.json()
+      if (roomTopicsData.topics) {
+        topics.value = roomTopicsData.topics.map(t => ({ title: t, content: '', timestamp: new Date().toISOString() }))
+        if (topics.value.length > 0) {
+          selectedTopicIndex.value = 0
         }
-        roomFound = true
       }
-    }
-  } catch (e) {
-    console.error('載入會議室失敗:', e)
-  }
 
-  // 如果本地找不到房間資料，從 API 獲取
-  if (!roomFound) {
-    try {
-      // showNotification('本地找不到該會議室，正在從服務器獲取...', 'info')
-      const response = await fetch(`${API_BASE_URL}/api/rooms`)
-      const data = await response.json()
-      
-      if (data.rooms) {
-        const apiRoom = data.rooms.find(r => r.code === code)
-        if (apiRoom) {
-          // 從後端帶入預設主題與時間
-          const topicCount = Math.max(1, Math.min(5, apiRoom.topic_count || 1))
-          const currentTopic = apiRoom.current_topic || '主題 1'
-          const topicsArr = []
-          // 先放入目前主題
-          topicsArr.push({ title: currentTopic, questions: [] })
-          // 再補足其餘主題名稱（避免重複）
-          for (let i = 1; i <= topicCount; i++) {
-            const t = `主題 ${i}`
-            if (!topicsArr.find(x => x.title === t)) {
-              topicsArr.push({ title: t, questions: [] })
-            }
-          }
-
-          room.value = {
-            code: apiRoom.code,
-            title: apiRoom.title,
-            createdAt: new Date(apiRoom.created_at * 1000).toISOString(),
-            isActive: apiRoom.status !== 'End',
-            questions: [],
-            settings: { allowQuestions: true, allowVoting: true },
-            topics: topicsArr,
-            topic_summary: apiRoom.topic_summary || ''
-          }
-          questions.value = []
-          topics.value = topicsArr
-
-          // 若尚未有本地計時器設定，使用後端 countdown 作為預設
-      try {
-            const key = `timer_settings_${apiRoom.code}`
-            const saved = localStorage.getItem(key)
-            if (!saved) {
-              const d = Number(apiRoom.countdown || 0)
-              const hours = Math.floor(d / 3600)
-              const minutes = Math.floor((d % 3600) / 60)
-              const seconds = d % 60
-              const init = d > 0 ? { hours, minutes, seconds } : { hours: 0, minutes: 5, seconds: 0 }
-              localStorage.setItem(key, JSON.stringify(init))
-        seededFromBackend.value = true
-            }
-          } catch (e) { /* ignore */ }
-
-          // 保存到 localStorage
-          saveRoom()
-          showNotification('已從服務器獲取房間資訊', 'success')
-        } else {
-          showNotification('服務器上找不到該會議室', 'error')
-          setTimeout(() => {
-            router.push('/')
-          }, 2000)
-        }
-      } else {
-        showNotification('無法獲取房間列表', 'error')
-        setTimeout(() => {
-          router.push('/')
-        }, 2000)
+      // 如果是新房間，觸發 AI 生成主題
+      if (isNewRoom && room.value) {
+        generateAndDisplayTopics()
       }
-    } catch (err) {
-      console.error('從 API 獲取房間資訊失敗:', err)
-      showNotification('無法連接到服務器', 'error')
-      setTimeout(() => {
-        router.push('/')
-      }, 2000)
+    } else {
+      // 房間不存在的處理
+      showNotification('找不到指定的會議室', 'error')
+      router.push('/')
     }
+  } catch (error) {
+    console.error('載入房間資訊時出錯:', error)
+    showNotification('載入房間資訊失敗', 'error')
   }
 }
+
+// --- AI 生成並逐一顯示主題 ---
+async function generateAndDisplayTopics() {
+  // 1. 先清空現有主題並顯示載入狀態
+  const originalTitle = room.value?.title || '新會議'
+  topics.value = [{ title: 'AI 主題生成中...', content: '', timestamp: '' }]
+  selectedTopicIndex.value = 0
+
+  try {
+    // 2. 呼叫 AI 生成主題
+    const topicResp = await fetch(`${API_BASE_URL}/ai/generate_topics`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        meeting_title: originalTitle,
+        topic_count: room.value?.topic_count || 3,
+      })
+    })
+    if (!topicResp.ok) throw new Error("AI 主題生成失敗")
+    const topicData = await topicResp.json()
+    const generatedTopics = topicData.topics || []
+
+    if (generatedTopics.length === 0) {
+      throw new Error("AI 未能生成任何主題，將使用預設主題")
+    }
+
+    // 3. 呼叫新 API 將主題添加到房間
+    await fetch(`${API_BASE_URL}/api/room/add_topics`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ room: roomCode.value, topics: generatedTopics }),
+    });
+
+
+    // 4. 逐一顯示主題
+    topics.value = [] // 清空 loading 狀態
+    for (let i = 0; i < generatedTopics.length; i++) {
+      await new Promise(resolve => setTimeout(resolve, 300)) // 延遲效果
+      topics.value.push({
+        title: generatedTopics[i],
+        content: '',
+        timestamp: new Date().toISOString()
+      })
+    }
+    
+    // 預設選中第一個主題並切換
+    if (topics.value.length > 0) {
+      selectedTopicIndex.value = 0
+      await switchTopic(topics.value[0].title)
+    }
+
+  } catch (err) {
+    showNotification(err.message, 'error')
+    // 如果失敗，還原為預設主題
+    topics.value = [{ title: '預設主題', content: '', timestamp: new Date().toISOString() }]
+    selectedTopicIndex.value = 0
+  }
+}
+
 
 // 寫回 localStorage
 function saveRoom() {

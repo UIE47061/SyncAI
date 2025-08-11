@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Request, HTTPException, Body
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 import random, string, time
+import json
 
 router = APIRouter()
 
@@ -59,11 +60,11 @@ votes = {}
 
 class RoomCreate(BaseModel):
     title: str
-    topic: str
+    topics: List[str] # 改為接收 topics 列表
     topic_summary: Optional[str] = None
     desired_outcome: Optional[str] = None
-    topic_count: int = 1  # 1~5
-    countdown: int = 15 * 60  # 預設15分鐘
+    topic_count: int # 從前端接收主題數量
+    countdown: int = 15 * 60
 
 @router.post("/api/create_room")
 def create_room(room: RoomCreate):
@@ -77,10 +78,10 @@ def create_room(room: RoomCreate):
 
     參數：
     - room.title (str): 會議室標題
-    - room.topic (str): 第一個主題名稱
+    - room.topics (List[str]): 主題名稱列表
     - room.topic_summary (str, 選填): 題目摘要資訊
     - room.desired_outcome (str, 選填): 想達到效果
-    - room.topic_count (int): 問題/主題數量 (1~5)
+    - room.topic_count (int): 問題/主題數量
     - room.countdown (int): 預設倒數時間（秒）
 
     回傳：
@@ -89,12 +90,12 @@ def create_room(room: RoomCreate):
     code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
     while code in ROOMS:
         code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
-    # 正規化輸入
+        
     title = room.title.strip()
-    topic = room.topic.strip() or "主題 1"
-    topic_count = max(1, min(5, int(room.topic_count or 1)))
     countdown = int(room.countdown or 0)
     countdown = max(0, countdown)
+    room_topics = room.topics if room.topics else ["預設主題"]
+    first_topic = room_topics[0]
 
     ROOMS[code] = {
         "code": code,
@@ -102,31 +103,26 @@ def create_room(room: RoomCreate):
         "created_at": get_current_timestamp(),
         "participants": 0,
         "settings": {"allowQuestions": True, "allowVoting": True},
-        "status": "Stop",  # 初始化房間狀態為 Stop
-        "participants_list": [],  # 參與者列表
-        "current_topic": topic,
+        "status": "Stop",
+        "participants_list": [],
+        "current_topic": first_topic,
         "countdown": countdown,
         "time_start": 0,
-        # 新增建立時的描述資訊與預設時長
         "topic_summary": (room.topic_summary or "").strip(),
         "desired_outcome": (room.desired_outcome or "").strip(),
-        "topic_count": topic_count,
+        "topic_count": room.topic_count, # 使用前端傳來的值
     }
-    # 建立主題列表：第一個使用指定題目，其餘為 主題 2..N
-    # 第一個主題
-    topics[f"{code}_{topic}"] = {
-        "room_id": code,
-        "topic_name": topic,
-        "comments": [],
-    }
-    # 額外主題
-    for i in range(2, topic_count + 1):
-        tname = f"主題 {i}"
-        topics[f"{code}_{tname}"] = {
+    
+    for topic_name in room_topics:
+        topic_name_stripped = topic_name.strip()
+        if not topic_name_stripped:
+            continue
+        topics[f"{code}_{topic_name_stripped}"] = {
             "room_id": code,
-            "topic_name": tname,
+            "topic_name": topic_name_stripped,
             "comments": [],
         }
+    
     return {
         "code": ROOMS[code]["code"],
         "title": ROOMS[code]["title"],
@@ -134,6 +130,53 @@ def create_room(room: RoomCreate):
         "participants": ROOMS[code]["participants"],
         "settings": ROOMS[code]["settings"]
     }
+
+@router.get("/api/room_topics")
+def get_room_topics(room: str):
+    """取得指定房間的所有主題列表"""
+    if room not in ROOMS:
+        raise HTTPException(status_code=404, detail="Room not found")
+    
+    room_topics = [
+        t["topic_name"] for t_id, t in topics.items() if t["room_id"] == room
+    ]
+    return {"topics": room_topics}
+
+class AddTopicsRequest(BaseModel):
+    room: str
+    topics: List[str]
+
+@router.post("/api/room/add_topics")
+def add_topics_to_room(req: AddTopicsRequest):
+    """為指定房間添加多個主題，並清除舊的「預設主題」"""
+    if req.room not in ROOMS:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    # 1. 刪除舊的預設主題（如果存在）
+    default_topic_id = f"{req.room}_預設主題"
+    if default_topic_id in topics:
+        del topics[default_topic_id]
+
+    # 2. 添加新主題
+    for topic_name in req.topics:
+        topic_name_stripped = topic_name.strip()
+        if not topic_name_stripped:
+            continue
+        
+        topic_id = f"{req.room}_{topic_name_stripped}"
+        if topic_id not in topics:
+            topics[topic_id] = {
+                "room_id": req.room,
+                "topic_name": topic_name_stripped,
+                "comments": [],
+            }
+    
+    # 3. 更新房間的 current_topic 為新的第一個主題
+    if req.topics:
+        ROOMS[req.room]["current_topic"] = req.topics[0].strip()
+
+    return {"success": True, "message": f"已成功為房間 {req.room} 添加 {len(req.topics)} 個主題。"}
+
 
 @router.get("/api/rooms")
 def get_rooms():
