@@ -101,7 +101,7 @@
                 <option value="votes">按票數排序</option>
                 <option value="time">按時間排序</option>
               </select>
-              <button class="btn-qrcode" @click="summaryAI" :title="`統整主題「${topics[selectedTopicIndex]?.title || ''}」的意見`">
+              <button class="btn-qrcode" id="summary-btn" @click="summaryAI" :title="`統整主題「${topics[selectedTopicIndex]?.title || ''}」的意見`">
                 AI統整
               </button>
               <button class="btn-red btn-qrcode" @click="clearAllQuestions" :title="`清空主題「${topics[selectedTopicIndex]?.title || ''}」的所有評論`">
@@ -124,34 +124,49 @@
               <div
                 v-for="q in sortedQuestions"
                 :key="q.id"
-                class="question-item"
+                :class="['question-item', { 'ai-summary-item': q.isAISummary }]"
               >
-                <div class="question-header">
-                  <div class="question-text" v-html="escapeHtml(q.content)"></div>
-                  <div class="question-actions">
-                    <button class="btn-icon" @click="deleteQuestion(q.id)" title="刪除意見">
-                      <i class="fa-solid fa-trash-can"></i>
-                    </button>
-                  </div>
-                </div>
-                <div class="question-meta">
-                  <div class="question-votes">
-                    <span class="vote-item">
-                      <i class="fa-solid fa-thumbs-up"></i> {{ q.vote_good || 0 }}
-                    </span>
-                    <span class="vote-item">
-                      <i class="fa-solid fa-thumbs-down"></i> {{ q.vote_bad || 0 }}
-                    </span>
-                  </div>
-                  <div class="question-info">
-                    <div class="question-nickname" v-if="q.nickname">
-                      <i class="fa-regular fa-user"></i> {{ q.nickname }}
+                <!-- 情況一：如果這是一則 AI 總結 (超級留言樣式) -->
+                <template v-if="q.isAISummary">
+                  <div class="question-header">
+                    <div class="question-text">
+                      <h3><i class="fa-solid fa-robot"></i> AI 會議總結</h3>
+                      <div class="ai-content" v-html="q.content.replace(/\n/g, '<br>')"></div>
                     </div>
-                    <div class="question-time">
-                      {{ formatTime(q.ts) }}
+                    <div class="question-actions">
+                      <button class="btn-icon" @click="deleteQuestion(q.id)" title="刪除此總結">
+                        <i class="fa-solid fa-trash-can"></i>
+                      </button>
                     </div>
                   </div>
-                </div>
+                  <div class="question-meta">
+                    <div class="question-info">
+                      <div class="question-time">{{ formatTime(q.ts) }}</div>
+                    </div>
+                  </div>
+                </template>
+
+                <!-- 情況二：如果這是一則普通留言 (保持您原有的樣式) -->
+                <template v-else>
+                  <div class="question-header">
+                    <div class="question-text" v-html="escapeHtml(q.content)"></div>
+                    <div class="question-actions">
+                      <button class="btn-icon" @click="deleteQuestion(q.id)" title="刪除意見">
+                        <i class="fa-solid fa-trash-can"></i>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="question-meta">
+                    <div class="question-votes">
+                      <span class="vote-item"><i class="fa-solid fa-thumbs-up"></i> {{ q.vote_good || 0 }}</span>
+                      <span class="vote-item"><i class="fa-solid fa-thumbs-down"></i> {{ q.vote_bad || 0 }}</span>
+                    </div>
+                    <div class="question-info">
+                      <div class="question-nickname" v-if="q.nickname"><i class="fa-regular fa-user"></i> {{ q.nickname }}</div>
+                      <div class="question-time">{{ formatTime(q.ts) }}</div>
+                    </div>
+                  </div>
+                </template>
               </div>
             </template>
           </div>
@@ -452,7 +467,6 @@ const room = ref(null)
 const roomCode = ref('')
 const questions = ref([])
 const roomStatus = ref('NotFound') // 房間狀態：NotFound, Stop, Discussion
-
 // 房間資訊編輯
 const editRoomTitle = ref('')
 const editRoomSummary = ref('')
@@ -535,26 +549,25 @@ async function fetchParticipants() {
 
 // 意見排序
 const sortedQuestions = computed(() => {
-  const arr = [...questions.value]
-  if (sortBy.value === 'votes') {
-    return arr.sort((a, b) => {
-      const aGood = a.vote_good || 0
-      const bGood = b.vote_good || 0
-      const aBad = a.vote_bad || 0
-      const bBad = b.vote_bad || 0
-      
-      // 先按讚數由大到小排序
-      if (bGood !== aGood) {
-        return bGood - aGood
-      }
-      
-      // 讚數相同時，按倒讚數由小到大排序
-      return aBad - bBad
-    })
-  }
-  // 由新到舊（使用留言時間戳 ts）
-  return arr.sort((a, b) => (b.ts || 0) - (a.ts || 0))
-})
+  // 1. 先將 AI 總結和一般留言分開
+  const aiSummaries = questions.value.filter(q => q.isAISummary);
+  const normalQuestions = questions.value.filter(q => !q.isAISummary);
+
+  // 2. 只對一般留言進行排序
+  const sortedNormal = [...normalQuestions].sort((a, b) => {
+    if (sortBy.value === 'votes') {
+      const aVotes = (a.vote_good || 0) - (a.vote_bad || 0);
+      const bVotes = (b.vote_good || 0) - (b.vote_bad || 0);
+      if (bVotes !== aVotes) return bVotes - aVotes;
+    }
+    // 時間排序
+    return (b.ts || 0) - (a.ts || 0);
+  });
+
+  // 3. 最後，將 AI 總結放回陣列的最前面
+  return [...aiSummaries, ...sortedNormal];
+});
+
 
 // 取得 Room 資訊
 async function loadRoom() {
@@ -694,24 +707,24 @@ function saveRoom() {
 
 // 獲取意見列表
 async function fetchQuestions() {
-  if (!roomCode.value) return
+  if (!roomCode.value) return;
   
   try {
-    const response = await fetch(`${API_BASE_URL}/api/room_comments?room=${roomCode.value}`)
+    const response = await fetch(`${API_BASE_URL}/api/room_comments?room=${roomCode.value}`);
     if (!response.ok) {
-      throw new Error(`HTTP error! Status: ${response.status}`)
+      throw new Error(`HTTP error! Status: ${response.status}`);
     }
     
-    const resp = await response.json()
-    const data = resp["comments"] || []
-    questions.value = data || []
+    const resp = await response.json();
+    questions.value = resp["comments"] || [];
     
-    // 只有在 room.value 存在時才更新 localStorage 中的房間資料
+    // 您原有的 saveRoom 邏輯可以保留
     if (room.value) {
-      saveRoom()
+      saveRoom();
     }
+    
   } catch (error) {
-    console.error('獲取意見列表失敗:', error)
+    console.error('獲取意見列表失敗:', error);
   }
 }
 
@@ -745,41 +758,31 @@ async function deleteQuestion(id) {
   }
 }
 
-/**
+/*
  * 呼叫後端 API 以生成會議總結，並將結果顯示在指定的文字區塊中。
- * @param {object} params - 包含會議室和主題資訊的物件。
- * @param {string} params.room - 當前的會議室代碼 (Room Code)。
- * @param {string} params.topic - 要進行總結的主題名稱。
  */
-async function summaryAI(params) {
-  // 假設您有一個顯示總結按鈕，ID 為 'summary-btn'
+async function summaryAI() {
   const summaryButton = document.getElementById('summary-btn');
-  // 假設您的留言輸入框的 ID 是 'comment-input'
-  const commentInput = document.getElementById('comment-input');
-
-  if (!params.room || !params.topic) {
-    console.error("錯誤：缺少 room 或 topic 參數。");
-    alert("無法生成總結，因為缺少必要的會議資訊。");
-    return;
-  }
+  // 取得目前主題
+  const currentTopic = topics.value[selectedTopicIndex.value]?.title
   
   // --- 1. 進入載入狀態 (提供使用者回饋) ---
   if (summaryButton) {
     summaryButton.disabled = true;
-    summaryButton.textContent = 'AI 總結中...';
+    summaryButton.textContent = 'AI 統整中...';
   }
 
   try {
     // --- 2. 呼叫後端的 summary API ---
-    const response = await fetch(`${API_BASE_URL}/api/summary`, {
+    const response = await fetch(`${API_BASE_URL}/ai/summary`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       // 將參數轉換為 JSON 字串作為請求的 body
       body: JSON.stringify({
-        room: params.room,
-        topic: params.topic
+        room: roomCode.value,
+        topic: currentTopic
       }),
     });
 
@@ -792,19 +795,20 @@ async function summaryAI(params) {
     // 解析回傳的 JSON 資料
     const data = await response.json();
 
+    // --- 4. 將總結結果貼回留言區 ---
     if (data.summary) {
-      // --- 4. 將總結結果貼回留言區 ---
-      if (commentInput) {
-        // 如果是 <textarea> 或 <input>，使用 .value
-        commentInput.value = data.summary;
-        
-        // (可選) 自動將焦點移到輸入框上
-        commentInput.focus();
-      } else {
-        console.error("錯誤：找不到 ID 為 'comment-input' 的留言輸入框。");
-        // 如果找不到輸入框，也可以用 alert 顯示
-        alert("AI 總結：\n" + data.summary);
-      }
+      await fetch(`${API_BASE_URL}/api/room_comment`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ 
+          room: roomCode.value, 
+          content: data.summary,
+          nickname: "SyncAI 小助手",
+          isAISummary: true
+        })
+      });
     } else {
       throw new Error("API 回應中未包含 summary 欄位。");
     }
@@ -818,7 +822,7 @@ async function summaryAI(params) {
     // --- 6. 無論成功或失敗，都恢復按鈕狀態 ---
     if (summaryButton) {
       summaryButton.disabled = false;
-      summaryButton.textContent = '生成 AI 總結';
+      summaryButton.textContent = 'AI統整';
     }
   }
 }
@@ -2581,6 +2585,48 @@ onBeforeUnmount(() => {
   display: flex;
   gap: 0.5rem;
 }
+
+.ai-summary-item {
+  background: var(--ai-summary-background);
+  border: 1px solid var(--ai-summary-border-color);
+  border-left: 5px solid var(--ai-summary-accent-border-color);
+  box-shadow: 0 4px 12px var(--ai-summary-shadow-color);
+  animation: fadeInHighlight 0.5s ease;
+  /* 確保移除任何可能覆蓋背景的舊樣式 */
+  background-color: transparent !important; /* 可以加這行來強制移除單色背景的覆蓋 */
+}
+
+.ai-summary-item h3 {
+  color: var(--ai-summary-header-color);
+  /* ... 其他不變的樣式 ... */
+  margin-top: 0;
+  margin-bottom: 12px;
+  font-size: 1.15em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 注意這裡的修改 */
+.ai-summary-item .ai-content {
+  color: var(--ai-summary-content-color);
+  /* ... 其他不變的樣式 ... */
+  line-height: 1.6;
+  font-size: 0.95em;
+}
+
+/* 動畫效果保持不變 */
+@keyframes fadeInHighlight {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 
 .empty-state {
   text-align: center;

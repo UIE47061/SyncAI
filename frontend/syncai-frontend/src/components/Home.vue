@@ -82,10 +82,27 @@
           </div>
 
           <!-- 5. 問題/主題數量（1~5） -->
-          <div class="form-group">
+          <!-- <div class="form-group">
             <label for="topicCount">問題/主題數量（1~5）</label>
             <input type="number" id="topicCount" v-model.number="createForm.topicCount" min="1" max="5" />
-          </div>
+          </div> -->
+
+          <div class="form-group">
+            <label for="topic-count">問題/主題數量（1~5）</label>
+
+            <div class="slider-container">
+              <span class="slider-value">{{ createForm.topicCount }}</span>
+              <input 
+                  type="range" 
+                  id="topicCount"
+                  class="slider"
+                  min="1"
+                  max="5"
+                  step="1"  
+                  v-model="createForm.topicCount"
+              />
+            </div>
+        </div>
 
           <!-- 6. 時間（時間選擇器 時分秒 預設15分鐘） -->
           <div class="form-group">
@@ -749,6 +766,24 @@ function removeNotification(i) {
   font-style: italic;
   font-size: 16px;
   background: linear-gradient(135deg, #f8f9fa, #ffffff);
+}
+
+.slider-container {
+    display: flex; /* 啟用 Flexbox 佈局 */
+    flex-direction: row; /* 確保是從左到右的水平排列 (這是預設值) */
+    align-items: center; /* 讓數字和滑桿在垂直方向上置中對齊 */
+    gap: 1rem; /* 在數字和滑桿之間增加一點間距 */
+}
+
+/* 讓數字本身有點樣式，看起來更清楚 */
+.slider-value {
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: #007bff;
+}
+
+.slider {
+    width: 100%; /* 讓滑桿填滿剩餘的空間 */
 }
 
 /* 響應式設計 */

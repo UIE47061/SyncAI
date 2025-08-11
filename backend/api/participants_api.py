@@ -645,6 +645,7 @@ class CommentRequest(BaseModel):
     room: str
     nickname: str
     content: str
+    isAISummary: bool = False
 
 class VoteRequest(BaseModel):
     room: str
@@ -739,7 +740,8 @@ def add_comment(data: CommentRequest):
         "id": comment_id,
         "nickname": data.nickname,
         "content": data.content,
-        "ts": get_current_timestamp()
+        "ts": get_current_timestamp(),
+        "isAISummary": data.isAISummary
     }
     
     topics[topic_id]["comments"].append(new_comment)

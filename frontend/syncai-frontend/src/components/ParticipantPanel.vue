@@ -87,7 +87,7 @@
           </div>
           
           <div v-else class="question-list">
-            <div v-for="q in sortedQuestions" :key="q.id" class="question-item">
+            <div v-for="q in questions" :key="q.id" :class="{ 'ai-summary-message': q.isAISummary }">
               <div class="question-header">
                 <div class="question-meta">
                   <div class="meta-item" v-if="q.nickname">
@@ -672,23 +672,24 @@ async function fetchRoomState() {
 
 // 獲取意見列表
 async function fetchQuestions() {
-  if (!roomCode.value) return
+  if (!roomCode.value) return;
   
   try {
-    const response = await fetch(`${API_BASE_URL}/api/room_comments?room=${roomCode.value}`)
+    const response = await fetch(`${API_BASE_URL}/api/room_comments?room=${roomCode.value}`);
     if (!response.ok) {
-      throw new Error(`HTTP error! Status: ${response.status}`)
+      throw new Error(`HTTP error! Status: ${response.status}`);
     }
     
-    const resp = await response.json()
-    const data = resp["comments"] || []
-    questions.value = data || []
+    const resp = await response.json();
+    questions.value = resp["comments"] || [];
     
-    // 獲取用戶投票記錄
-    await fetchUserVotes()
+    // 您原有的 saveRoom 邏輯可以保留
+    if (room.value) {
+      saveRoom();
+    }
+    
   } catch (error) {
-    console.error('獲取意見列表失敗:', error)
-    questions.value = []
+    console.error('獲取意見列表失敗:', error);
   }
 }
 
@@ -923,6 +924,15 @@ function goHome() {
 
 <style scoped>
 @import url('../assets/styles.css');
+
+.ai-summary-message {
+  background-color: #2c4268; /* 淡藍色背景 */
+  border-left: 5px solid #4285f4; /* 左邊有藍色的粗邊框 */
+  padding: 15px;
+  margin: 10px 0;
+  border-radius: 8px;
+  font-style: italic; /* 斜體字 */
+}
 
 /* 整體布局 - 覆蓋和擴展共享樣式 */
 .navbar {
