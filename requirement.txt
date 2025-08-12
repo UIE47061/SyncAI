@@ -5,3 +5,7 @@ python-dotenv
 requests
 aiohttp
 sqlalchemy
+llama-cpp-python
+jinja2
+alembic
+httpx
