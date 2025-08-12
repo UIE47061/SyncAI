@@ -1,8 +1,7 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
 from llama_cpp import Llama
-import os
-import json
+import random, string, time, json, re
 from typing import Union, List
 from .participants_api import ROOMS, topics, votes
 
@@ -125,3 +124,199 @@ def summary_ai(req: SummaryRequest):
     
     summary_text = output["choices"][0]["text"].strip()
     return {"summary": summary_text}
+
+def _generate_topics_from_title(meeting_title: str, topic_count: int, llm_instance: Llama) -> List[str]:
+    """
+    根據會議標題生成主題的核心邏輯。
+    這是一個內部函式，旨在被其他 API 端點調用。
+    """
+    topic_count = max(1, min(10, topic_count))
+    meeting_title = meeting_title.strip()
+
+    if not meeting_title:
+        return ["錯誤：會議名稱不可為空。"]
+
+    prompt = f"""
+        你的任務是一位專業且高效的會議主持人。
+        請根據以下提供的「會議名稱」，為這次會議腦力激盪出 {topic_count} 個最關鍵、最相關的討論議程主題。
+
+        會議名稱："{meeting_title}"
+
+        你的回覆必須是一個單層的 JSON 格式陣列 (a flat JSON array)，陣列中只包含簡潔且非空的主題字串。
+        禁止在陣列中包含任何空字串 ("")、巢狀陣列或字串化的 JSON。
+        請不要包含任何數字編號、破折號、或任何其他的開場白與解釋。
+
+        正確範例：
+        ["回顧第二季銷售數據", "討論新功能優先級", "設定第三季KPI"]
+
+        錯誤範例：
+        ["", "主題A", "[\"主題B\", \"主題C\"]"]
+    """
+
+    try:
+        output = llm_instance(
+            prompt,
+            max_tokens=512,
+            stop=["</s>"],
+            echo=False,
+            temperature=0.7,
+        )
+        
+        raw_text = output["choices"][0]["text"].strip()
+
+        # --- 4. 解析 AI 的回覆 (v4 終極版) ---
+        
+        # 遞迴函式，用於攤平所有可能的巢狀結構
+        def flatten_and_clean_topics(items):
+            if not isinstance(items, list):
+                return []
+            
+            flat_list = []
+            for item in items:
+                # 如果項目是列表，遞迴攤平
+                if isinstance(item, list):
+                    flat_list.extend(flatten_and_clean_topics(item))
+                # 如果項目是字串
+                elif isinstance(item, str):
+                    # 去除頭尾空白
+                    item = item.strip()
+                    # 嘗試將其視為 JSON 進行解析
+                    if item.startswith('[') and item.endswith(']'):
+                        try:
+                            nested_list = json.loads(item)
+                            flat_list.extend(flatten_and_clean_topics(nested_list))
+                        except json.JSONDecodeError:
+                            # 解析失敗，當作普通字串，但過濾空值
+                            if item:
+                                flat_list.append(item)
+                    # 如果是普通字串，過濾空值
+                    elif item:
+                        flat_list.append(item)
+            return flat_list
+
+        try:
+            # 步驟 1: 移除潛在的 Markdown 程式碼區塊標籤
+            cleaned_text = re.sub(r'```(json)?\s*', '', raw_text)
+            cleaned_text = cleaned_text.strip('`').strip()
+
+            # 步驟 2: 找到最外層的 []
+            start_index = cleaned_text.find('[')
+            end_index = cleaned_text.rfind(']') + 1
+            
+            if start_index != -1 and end_index != 0:
+                json_str = cleaned_text[start_index:end_index]
+                initial_topics = json.loads(json_str)
+            else:
+                # 如果找不到 JSON 結構，直接按行分割
+                raise ValueError("找不到 JSON 陣列結構")
+
+            # 步驟 3: 使用遞迴函式進行徹底的攤平與清理
+            generated_topics = flatten_and_clean_topics(initial_topics)
+
+        except (json.JSONDecodeError, ValueError):
+            # 步驟 4: 如果 JSON 解析失敗，使用備用方案 (按行分割)
+            cleaned_text = re.sub(r'```(json)?\s*', '', raw_text)
+            cleaned_text = cleaned_text.strip('`').strip()
+            generated_topics = [
+                line.strip().lstrip('-*').lstrip('123456789.').strip()
+                for line in cleaned_text.split('\n')
+                if line.strip() and line.strip() not in ['[', ']']
+            ]
+        
+        # --- 5. 最後的清理與數量控制 ---
+        final_topics = [topic for topic in generated_topics if topic]
+        return final_topics[:topic_count]
+
+    except Exception as e:
+        print(f"Error calling LLM for topic generation: {e}")
+        return [f"抱歉，AI 服務暫時無法連線，請稍後再試。"]
+
+
+class GenerateTopicsRequest(BaseModel):
+    """用於 AI 生成主題請求的模型"""
+    meeting_title: str
+    topic_count: int
+
+@router.post("/generate_topics")
+def generate_ai_topics(req: GenerateTopicsRequest):
+    """
+    根據會議名稱和指定數量，使用 AI 生成議程主題。
+
+    [POST] /ai/generate_topics
+
+    參數：
+    - meeting_title (str): 會議的標題或主要目的。
+    - topic_count (int): 希望生成的主題數量。
+
+    回傳：
+    - topics (list[str]): 一個包含 AI 生成的主題字串的列表。
+    """
+    # --- 1. 基本驗證 ---
+    # 確保主題數量在一個合理的範圍內
+    topic_count = max(1, min(10, req.topic_count)) 
+    meeting_title = req.meeting_title.strip()
+
+    if not meeting_title:
+        return {"topics": ["錯誤：會議名稱不可為空。"]}
+
+    # --- 2. 設計 Prompt (指令) ---
+    # 這是與 AI 溝通的關鍵，我們給予它角色、任務和明確的輸出格式要求。
+    prompt = f"""
+        你的任務是一位專業且高效的會議主持人。
+        請根據以下提供的「會議名稱」，為這次會議腦力激盪出 {topic_count} 個最關鍵、最相關的討論議程主題，並使用繁體中文回覆．
+
+        會議名稱："{meeting_title}"
+
+        你的回覆必須是一個 JSON 格式的陣列 (array)，陣列中只包含主題的字串。
+        請不要包含任何數字編號、破折號、或任何其他的開場白與解釋。
+
+        例如，如果會議名稱是「2025年第三季產品開發策略會議」，並且主題數量是3的話，你應該回傳：
+        ["回顧第二季銷售數據與客戶回饋", "討論新功能優先級與開發時程", "設定第三季的關鍵績效指標 (KPI)"]
+    """
+
+    # --- 3. 呼叫大型語言模型 (LLM) ---
+    # 假設您有一個名為 llm 的函式來呼叫 AI 模型
+    # 這裡的參數可以根據您的模型進行微調
+    try:
+        output = llm(
+            prompt,
+            max_tokens=512,  # 產生的 token 數量可以少一些，因為只是主題列表
+            stop=["</s>"],
+            echo=False,
+            temperature=0.7, # 溫度可以稍微低一點，讓主題更聚焦
+        )
+        
+        raw_text = output["choices"][0]["text"].strip()
+
+        # --- 4. 解析 AI 的回覆 ---
+        # 我們優先嘗試將回覆直接解析為 JSON
+        try:
+            # 找到 JSON 陣列的開始和結束位置，以應對 AI 可能加入多餘文字的情況
+            start_index = raw_text.find('[')
+            end_index = raw_text.rfind(']') + 1
+            if start_index != -1 and end_index != 0:
+                json_str = raw_text[start_index:end_index]
+                generated_topics = json.loads(json_str)
+                # 確保結果是一個列表
+                if not isinstance(generated_topics, list):
+                    raise ValueError("AI 回傳的不是一個列表")
+            else:
+                 raise ValueError("在 AI 回應中找不到 JSON 陣列")
+
+        except (json.JSONDecodeError, ValueError):
+            # 如果 JSON 解析失敗，我們退一步，嘗試按行分割作為備用方案
+            # 這能應對 AI 未完全遵循格式要求的情況
+            generated_topics = [
+                line.strip().lstrip('-').lstrip('*').lstrip('123456789.').strip() 
+                for line in raw_text.split('\n') 
+                if line.strip()
+            ]
+            # 只取回我們需要的數量
+            generated_topics = generated_topics[:topic_count]
+
+        return {"topics": generated_topics}
+
+    except Exception as e:
+        # 處理呼叫 AI 時可能發生的任何錯誤
+        print(f"Error calling LLM for topic generation: {e}")
+        return {"topics": [f"抱歉，AI 服務暫時無法連線，請稍後再試。"]}

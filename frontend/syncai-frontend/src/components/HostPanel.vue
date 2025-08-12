@@ -1,9 +1,10 @@
 <template>
   <div>
     <!-- 導覽列 -->
-    <nav class="navbar">
+  <nav class="navbar">
       <div class="nav-container">
-        <div class="nav-brand">
+    <div class="nav-brand" @click="router.push('/')" aria-label="返回主頁">
+          <img src="/icon.png" alt="SyncAI" class="brand-icon" />
           <h1>SyncAI</h1>
           <span>主持人面板</span>
         </div>
@@ -100,7 +101,7 @@
                 <option value="votes">按票數排序</option>
                 <option value="time">按時間排序</option>
               </select>
-              <button class="btn-qrcode" @click="summaryAI" :title="`統整主題「${topics[selectedTopicIndex]?.title || ''}」的意見`">
+              <button class="btn-qrcode" id="summary-btn" @click="summaryAI" :title="`統整主題「${topics[selectedTopicIndex]?.title || ''}」的意見`">
                 AI統整
               </button>
               <button class="btn-red btn-qrcode" @click="clearAllQuestions" :title="`清空主題「${topics[selectedTopicIndex]?.title || ''}」的所有評論`">
@@ -123,34 +124,49 @@
               <div
                 v-for="q in sortedQuestions"
                 :key="q.id"
-                class="question-item"
+                :class="['question-item', { 'ai-summary-item': q.isAISummary }]"
               >
-                <div class="question-header">
-                  <div class="question-text" v-html="escapeHtml(q.content)"></div>
-                  <div class="question-actions">
-                    <button class="btn-icon" @click="deleteQuestion(q.id)" title="刪除意見">
-                      <i class="fa-solid fa-trash-can"></i>
-                    </button>
-                  </div>
-                </div>
-                <div class="question-meta">
-                  <div class="question-votes">
-                    <span class="vote-item">
-                      <i class="fa-solid fa-thumbs-up"></i> {{ q.vote_good || 0 }}
-                    </span>
-                    <span class="vote-item">
-                      <i class="fa-solid fa-thumbs-down"></i> {{ q.vote_bad || 0 }}
-                    </span>
-                  </div>
-                  <div class="question-info">
-                    <div class="question-nickname" v-if="q.nickname">
-                      <i class="fa-regular fa-user"></i> {{ q.nickname }}
+                <!-- 情況一：如果這是一則 AI 總結 (超級留言樣式) -->
+                <template v-if="q.isAISummary">
+                  <div class="question-header">
+                    <div class="question-text">
+                      <h3><i class="fa-solid fa-robot"></i> AI 會議總結</h3>
+                      <div class="ai-content" v-html="q.content.replace(/\n/g, '<br>')"></div>
                     </div>
-                    <div class="question-time">
-                      {{ formatTime(q.ts) }}
+                    <div class="question-actions">
+                      <button class="btn-icon" @click="deleteQuestion(q.id)" title="刪除此總結">
+                        <i class="fa-solid fa-trash-can"></i>
+                      </button>
                     </div>
                   </div>
-                </div>
+                  <div class="question-meta">
+                    <div class="question-info">
+                      <div class="question-time">{{ formatTime(q.ts) }}</div>
+                    </div>
+                  </div>
+                </template>
+
+                <!-- 情況二：如果這是一則普通留言 (保持您原有的樣式) -->
+                <template v-else>
+                  <div class="question-header">
+                    <div class="question-text" v-html="escapeHtml(q.content)"></div>
+                    <div class="question-actions">
+                      <button class="btn-icon" @click="deleteQuestion(q.id)" title="刪除意見">
+                        <i class="fa-solid fa-trash-can"></i>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="question-meta">
+                    <div class="question-votes">
+                      <span class="vote-item"><i class="fa-solid fa-thumbs-up"></i> {{ q.vote_good || 0 }}</span>
+                      <span class="vote-item"><i class="fa-solid fa-thumbs-down"></i> {{ q.vote_bad || 0 }}</span>
+                    </div>
+                    <div class="question-info">
+                      <div class="question-nickname" v-if="q.nickname"><i class="fa-regular fa-user"></i> {{ q.nickname }}</div>
+                      <div class="question-time">{{ formatTime(q.ts) }}</div>
+                    </div>
+                  </div>
+                </template>
               </div>
             </template>
           </div>
@@ -160,11 +176,11 @@
           <div class="panel-header">
             <h2>控制區</h2>
             <div class="panel-tabs">
-              <button :class="{ active: controlTab === 'info' }" @click="controlTab = 'info'" title="會議資訊">
-                <i class="fa-solid fa-link"></i>
-              </button>
               <button :class="{ active: controlTab === 'control' }" @click="controlTab = 'control'" title="會議控制">
                 <i class="fa-solid fa-gear"></i>
+              </button>
+              <button :class="{ active: controlTab === 'info' }" @click="controlTab = 'info'" title="會議資訊">
+                <i class="fa-solid fa-link"></i>
               </button>
               <button :class="{ active: controlTab === 'members' }" @click="controlTab = 'members'" title="成員名單">
                 <i class="fa-solid fa-users"></i>
@@ -207,8 +223,8 @@
                       <div class="room-info-value">{{ room?.title || '載入中...' }}</div>
                     </div>
                     <div class="room-info-item">
-                      <label>主持人名稱</label>
-                      <div class="room-info-value">{{ room?.host || '載入中...' }}</div>
+                      <label>摘要資訊</label>
+                      <div class="room-info-value" style="white-space: pre-wrap;">{{ room?.topic_summary || '（尚未填寫）' }}</div>
                     </div>
                     <div class="room-info-actions">
                       <button class="btn btn-outline btn-sm" @click="startEditRoomInfo">
@@ -234,23 +250,20 @@
                       </div>
                     </div>
                     <div class="form-group">
-                      <label for="edit-room-host">主持人名稱</label>
-                      <div class="input-with-btn">
-                        <input 
-                          id="edit-room-host"
-                          type="text" 
-                          v-model="editRoomHost" 
-                          :placeholder="room?.host || '主持人名稱'"
-                          maxlength="20"
-                          class="form-input"
-                        />
-                      </div>
+                      <label for="edit-room-summary">摘要資訊</label>
+                      <textarea
+                        id="edit-room-summary"
+                        v-model="editRoomSummary"
+                        placeholder="輸入此會議的摘要資訊..."
+                        rows="4"
+                        class="form-input"
+                      ></textarea>
                     </div>
                     <div class="form-actions">
                       <button 
                         class="btn btn-primary btn-sm" 
                         @click="updateRoomInfo"
-                        :disabled="!editRoomTitle.trim() || !editRoomHost.trim()"
+                        :disabled="!editRoomTitle.trim()"
                       >
                         <i class="fa-solid fa-check"></i>
                         儲存變更
@@ -291,13 +304,13 @@
                   <div class="timer-time">{{ formattedRemainingTime }}</div>
                 </div>
               </div>
-              <div class="setting-row">
+              <!-- <div class="setting-row">
                 <span>時間到後自動切換會議狀態</span>
                 <label class="switch">
                   <input type="checkbox" v-model="autoChangeStatus" />
                   <span class="slider"></span>
                 </label>
-              </div>
+              </div> -->
             </div>
             <div class="control-section">
               <h3>問答設定</h3>
@@ -439,7 +452,7 @@ import QrcodeVue from 'qrcode.vue'
 import { useRouter } from 'vue-router'
 
 // 控制面板 tab 狀態
-const controlTab = ref('info')
+const controlTab = ref('control')
 function removeParticipant(index) {
   participantsList.value.splice(index, 1)
   showNotification('已移除成員', 'info')
@@ -454,10 +467,10 @@ const room = ref(null)
 const roomCode = ref('')
 const questions = ref([])
 const roomStatus = ref('NotFound') // 房間狀態：NotFound, Stop, Discussion
-
 // 房間資訊編輯
 const editRoomTitle = ref('')
-const editRoomHost = ref('')
+const editRoomSummary = ref('')
+// 主持人欄位已移除
 const isEditingRoomInfo = ref(false)
 const settings = reactive({ allowQuestions: true, allowVoting: true })
 const sortBy = ref('votes')
@@ -472,6 +485,7 @@ const allowJoin = ref(true)
 // 計時器相關
 const remainingTime = ref(0) // 剩餘時間（以秒為單位）
 const initialTime = ref(0) // 初始設定的時間
+const seededFromBackend = ref(false) // 是否從後端初始化了計時器設定（首次進入）
 const timerRunning = ref(false) // 計時器是否運行中
 const timerInterval = ref(null) // 計時器間隔引用
 const isTimerSettingsVisible = ref(false) // 計時器設定彈窗是否可見
@@ -535,110 +549,130 @@ async function fetchParticipants() {
 
 // 意見排序
 const sortedQuestions = computed(() => {
-  const arr = [...questions.value]
-  if (sortBy.value === 'votes') {
-    return arr.sort((a, b) => {
-      const aGood = a.vote_good || 0
-      const bGood = b.vote_good || 0
-      const aBad = a.vote_bad || 0
-      const bBad = b.vote_bad || 0
-      
-      // 先按讚數由大到小排序
-      if (bGood !== aGood) {
-        return bGood - aGood
-      }
-      
-      // 讚數相同時，按倒讚數由小到大排序
-      return aBad - bBad
-    })
-  }
-  return arr.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-})
+  // 1. 先將 AI 總結和一般留言分開
+  const aiSummaries = questions.value.filter(q => q.isAISummary);
+  const normalQuestions = questions.value.filter(q => !q.isAISummary);
+
+  // 2. 只對一般留言進行排序
+  const sortedNormal = [...normalQuestions].sort((a, b) => {
+    if (sortBy.value === 'votes') {
+      const aVotes = (a.vote_good || 0) - (a.vote_bad || 0);
+      const bVotes = (b.vote_good || 0) - (b.vote_bad || 0);
+      if (bVotes !== aVotes) return bVotes - aVotes;
+    }
+    // 時間排序
+    return (b.ts || 0) - (a.ts || 0);
+  });
+
+  // 3. 最後，將 AI 總結放回陣列的最前面
+  return [...aiSummaries, ...sortedNormal];
+});
+
 
 // 取得 Room 資訊
 async function loadRoom() {
   const urlParams = new URLSearchParams(window.location.search)
   const code = urlParams.get('room')
   if (!code) {
-    showNotification('無效的會議室代碼', 'error')
-    setTimeout(() => {
-      router.push('/')
-    }, 2000)
+    // 處理沒有 room code 的情況
     return
   }
   roomCode.value = code
 
-  let roomFound = false
+  // --- 檢查是否為新建立的房間 ---
+  const isNewRoom = urlParams.get('new') === 'true'
 
-  // 從 localStorage 取得資料
   try {
-    const roomsData = localStorage.getItem('Sync_AI_rooms')
-    if (roomsData) {
-      const rooms = new Map(JSON.parse(roomsData))
-      const r = rooms.get(code)
-      if (r) {
-        room.value = r
-        questions.value = r.questions || []
-        Object.assign(settings, r.settings || { allowQuestions: true, allowVoting: true })
-        
-        // 如果房間數據中有主題，則載入它們
-        if (r.topics && r.topics.length > 0) {
-          topics.value = r.topics
-        }
-        roomFound = true
-      }
-    }
-  } catch (e) {
-    console.error('載入會議室失敗:', e)
-  }
+    const resp = await fetch(`${API_BASE_URL}/api/rooms`)
+    if (!resp.ok) throw new Error('無法獲取房間列表')
+    const data = await resp.json()
+    const roomData = data.rooms.find(r => r.code === code)
 
-  // 如果本地找不到房間資料，從 API 獲取
-  if (!roomFound) {
-    try {
-      // showNotification('本地找不到該會議室，正在從服務器獲取...', 'info')
-      const response = await fetch(`${API_BASE_URL}/api/rooms`)
-      const data = await response.json()
-      
-      if (data.rooms) {
-        const apiRoom = data.rooms.find(r => r.code === code)
-        if (apiRoom) {
-          room.value = {
-            code: apiRoom.code,
-            title: apiRoom.title,
-            host: apiRoom.host,
-            createdAt: new Date(apiRoom.created_at * 1000).toISOString(),
-            isActive: apiRoom.status !== 'End',
-            questions: [],
-            settings: { allowQuestions: true, allowVoting: true },
-            topics: [{ title: '主題 1', questions: [] }]
-          }
-          questions.value = []
-          topics.value = [{ title: '主題 1', questions: [] }]
-          
-          // 保存到 localStorage
-          saveRoom()
-          showNotification('已從服務器獲取房間資訊', 'success')
-        } else {
-          showNotification('服務器上找不到該會議室', 'error')
-          setTimeout(() => {
-            router.push('/')
-          }, 2000)
+    if (roomData) {
+      room.value = roomData
+      // 從 roomData 更新 topics
+      const roomTopicsResp = await fetch(`${API_BASE_URL}/api/room_topics?room=${code}`)
+      const roomTopicsData = await roomTopicsResp.json()
+      if (roomTopicsData.topics) {
+        topics.value = roomTopicsData.topics.map(t => ({ title: t, content: '', timestamp: new Date().toISOString() }))
+        if (topics.value.length > 0) {
+          selectedTopicIndex.value = 0
         }
-      } else {
-        showNotification('無法獲取房間列表', 'error')
-        setTimeout(() => {
-          router.push('/')
-        }, 2000)
       }
-    } catch (err) {
-      console.error('從 API 獲取房間資訊失敗:', err)
-      showNotification('無法連接到服務器', 'error')
-      setTimeout(() => {
-        router.push('/')
-      }, 2000)
+
+      // 如果是新房間，觸發 AI 生成主題
+      if (isNewRoom && room.value) {
+        generateAndDisplayTopics()
+      }
+    } else {
+      // 房間不存在的處理
+      showNotification('找不到指定的會議室', 'error')
+      router.push('/')
     }
+  } catch (error) {
+    console.error('載入房間資訊時出錯:', error)
+    showNotification('載入房間資訊失敗', 'error')
   }
 }
+
+// --- AI 生成並逐一顯示主題 ---
+async function generateAndDisplayTopics() {
+  // 1. 先清空現有主題並顯示載入狀態
+  const originalTitle = room.value?.title || '新會議'
+  topics.value = [{ title: 'AI 主題生成中...', content: '', timestamp: '' }]
+  selectedTopicIndex.value = 0
+
+  try {
+    // 2. 呼叫 AI 生成主題
+    const topicResp = await fetch(`${API_BASE_URL}/ai/generate_topics`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        meeting_title: originalTitle,
+        topic_count: room.value?.topic_count || 3,
+      })
+    })
+    if (!topicResp.ok) throw new Error("AI 主題生成失敗")
+    const topicData = await topicResp.json()
+    const generatedTopics = topicData.topics || []
+
+    if (generatedTopics.length === 0) {
+      throw new Error("AI 未能生成任何主題，將使用預設主題")
+    }
+
+    // 3. 呼叫新 API 將主題添加到房間
+    await fetch(`${API_BASE_URL}/api/room/add_topics`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ room: roomCode.value, topics: generatedTopics }),
+    });
+
+
+    // 4. 逐一顯示主題
+    topics.value = [] // 清空 loading 狀態
+    for (let i = 0; i < generatedTopics.length; i++) {
+      await new Promise(resolve => setTimeout(resolve, 300)) // 延遲效果
+      topics.value.push({
+        title: generatedTopics[i],
+        content: '',
+        timestamp: new Date().toISOString()
+      })
+    }
+    
+    // 預設選中第一個主題並切換
+    if (topics.value.length > 0) {
+      selectedTopicIndex.value = 0
+      await switchTopic(topics.value[0].title)
+    }
+
+  } catch (err) {
+    showNotification(err.message, 'error')
+    // 如果失敗，還原為預設主題
+    topics.value = [{ title: '預設主題', content: '', timestamp: new Date().toISOString() }]
+    selectedTopicIndex.value = 0
+  }
+}
+
 
 // 寫回 localStorage
 function saveRoom() {
@@ -664,71 +698,82 @@ function saveRoom() {
 
 // 獲取意見列表
 async function fetchQuestions() {
-  if (!roomCode.value) return
+  if (!roomCode.value) return;
   
   try {
-    const response = await fetch(`${API_BASE_URL}/api/room_comments?room=${roomCode.value}`)
+    // 使用新的 RESTful API
+    const response = await fetch(`${API_BASE_URL}/api/rooms/${roomCode.value}/comments`);
     if (!response.ok) {
-      throw new Error(`HTTP error! Status: ${response.status}`)
+      throw new Error(`HTTP error! Status: ${response.status}`);
     }
     
-    const resp = await response.json()
-    const data = resp["comments"] || []
-    questions.value = data || []
+    const resp = await response.json();
+    questions.value = resp["comments"] || [];
     
-    // 只有在 room.value 存在時才更新 localStorage 中的房間資料
+    // 您原有的 saveRoom 邏輯可以保留
     if (room.value) {
-      saveRoom()
+      saveRoom();
     }
+    
   } catch (error) {
-    console.error('獲取意見列表失敗:', error)
+    console.error('獲取意見列表失敗:', error);
   }
 }
 
 // 意見操作
-function deleteQuestion(id) {
-  if (confirm('確定要刪除這個意見嗎？')) {
-    questions.value = questions.value.filter(q => q.id !== id)
-    room.value.questions = questions.value
-    saveRoom()
+async function deleteQuestion(id) {
+  if (!roomCode.value || !id) return
+  if (!confirm('確定要刪除這個意見嗎？')) return
+
+  try {
+    // 使用新的 RESTful API
+    const resp = await fetch(`${API_BASE_URL}/api/rooms/${roomCode.value}/comments/${id}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+    })
+
+    if (!resp.ok) {
+      throw new Error(`HTTP ${resp.status}`)
+    }
+    const data = await resp.json()
+    if (data.success) {
+      // 重新抓取列表以確保票數與內容同步
+      await fetchQuestions()
+      showNotification('已刪除意見', 'success')
+    } else {
+      showNotification(data.detail || '刪除失敗', 'error')
+    }
+  } catch (e) {
+    console.error('刪除意見失敗:', e)
+    showNotification('刪除失敗，請稍後再試', 'error')
   }
 }
 
-/**
+/*
  * 呼叫後端 API 以生成會議總結，並將結果顯示在指定的文字區塊中。
- * @param {object} params - 包含會議室和主題資訊的物件。
- * @param {string} params.room - 當前的會議室代碼 (Room Code)。
- * @param {string} params.topic - 要進行總結的主題名稱。
  */
-async function summaryAI(params) {
-  // 假設您有一個顯示總結按鈕，ID 為 'summary-btn'
+async function summaryAI() {
   const summaryButton = document.getElementById('summary-btn');
-  // 假設您的留言輸入框的 ID 是 'comment-input'
-  const commentInput = document.getElementById('comment-input');
-
-  if (!params.room || !params.topic) {
-    console.error("錯誤：缺少 room 或 topic 參數。");
-    alert("無法生成總結，因為缺少必要的會議資訊。");
-    return;
-  }
+  // 取得目前主題
+  const currentTopic = topics.value[selectedTopicIndex.value]?.title
   
   // --- 1. 進入載入狀態 (提供使用者回饋) ---
   if (summaryButton) {
     summaryButton.disabled = true;
-    summaryButton.textContent = 'AI 總結中...';
+    summaryButton.textContent = 'AI 統整中...';
   }
 
   try {
     // --- 2. 呼叫後端的 summary API ---
-    const response = await fetch(`${API_BASE_URL}/api/summary`, {
+    const response = await fetch(`${API_BASE_URL}/ai/summary`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       // 將參數轉換為 JSON 字串作為請求的 body
       body: JSON.stringify({
-        room: params.room,
-        topic: params.topic
+        room: roomCode.value,
+        topic: currentTopic
       }),
     });
 
@@ -741,19 +786,21 @@ async function summaryAI(params) {
     // 解析回傳的 JSON 資料
     const data = await response.json();
 
+    // --- 4. 將總結結果貼回留言區 ---
     if (data.summary) {
-      // --- 4. 將總結結果貼回留言區 ---
-      if (commentInput) {
-        // 如果是 <textarea> 或 <input>，使用 .value
-        commentInput.value = data.summary;
-        
-        // (可選) 自動將焦點移到輸入框上
-        commentInput.focus();
-      } else {
-        console.error("錯誤：找不到 ID 為 'comment-input' 的留言輸入框。");
-        // 如果找不到輸入框，也可以用 alert 顯示
-        alert("AI 總結：\n" + data.summary);
-      }
+      // 使用新的 RESTful API
+      await fetch(`${API_BASE_URL}/api/rooms/${roomCode.value}/comments`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ 
+          content: data.summary,
+          nickname: "SyncAI 小助手",
+          isAISummary: true
+        })
+      });
+      await fetchQuestions(); // 新增留言後刷新
     } else {
       throw new Error("API 回應中未包含 summary 欄位。");
     }
@@ -767,7 +814,7 @@ async function summaryAI(params) {
     // --- 6. 無論成功或失敗，都恢復按鈕狀態 ---
     if (summaryButton) {
       summaryButton.disabled = false;
-      summaryButton.textContent = '生成 AI 總結';
+      summaryButton.textContent = 'AI統整';
     }
   }
 }
@@ -972,20 +1019,20 @@ async function setRoomAllowJoin(allowed) {
 function startEditRoomInfo() {
   // 初始化編輯表單
   editRoomTitle.value = room.value?.title || ''
-  editRoomHost.value = room.value?.host || ''
+  editRoomSummary.value = room.value?.topic_summary || ''
   isEditingRoomInfo.value = true
 }
 
 function cancelEditRoomInfo() {
   // 清空編輯表單並返回顯示模式
   editRoomTitle.value = ''
-  editRoomHost.value = ''
+  editRoomSummary.value = ''
   isEditingRoomInfo.value = false
 }
 
 async function updateRoomInfo() {
-  if (!editRoomTitle.value.trim() || !editRoomHost.value.trim()) {
-    showNotification('房間名稱和主持人名稱不能為空', 'error')
+  if (!editRoomTitle.value.trim()) {
+    showNotification('房間名稱不能為空', 'error')
     return
   }
   
@@ -998,7 +1045,7 @@ async function updateRoomInfo() {
       body: JSON.stringify({
         room: roomCode.value,
         new_title: editRoomTitle.value.trim(),
-        new_host: editRoomHost.value.trim()
+        new_summary: editRoomSummary.value
       })
     })
     
@@ -1008,13 +1055,13 @@ async function updateRoomInfo() {
       // 更新本地的房間資料
       if (room.value) {
         room.value.title = data.new_title
-        room.value.host = data.new_host
+        room.value.topic_summary = data.topic_summary || ''
       }
       
       // 退出編輯模式
       isEditingRoomInfo.value = false
       editRoomTitle.value = ''
-      editRoomHost.value = ''
+      editRoomSummary.value = ''
       
       showNotification('房間資訊更新成功', 'success')
     } else {
@@ -1028,7 +1075,7 @@ async function updateRoomInfo() {
 
 function resetRoomInfoForm() {
   editRoomTitle.value = room.value?.title || ''
-  editRoomHost.value = room.value?.host || ''
+  editRoomSummary.value = room.value?.topic_summary || ''
 }
 
 // 側邊欄相關函數
@@ -1043,6 +1090,7 @@ async function selectTopic(index) {
   // 使用新的切換主題API
   const currentTopic = topics.value[index].title
   try {
+    // 直接呼叫新的 RESTful API
     const success = await switchTopic(currentTopic)
     if (success) {
       // 切換成功後，立即獲取新主題的評論
@@ -1077,21 +1125,21 @@ async function saveTopicEdit() {
     }
     
     try {
-      // 使用新的 rename_topic API
-      const response = await fetch(`${API_BASE_URL}/api/room_rename_topic`, {
+      // 使用新的 rename_topic RESTful API
+      const response = await fetch(`${API_BASE_URL}/api/rooms/${roomCode.value}/topics/rename`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          room: roomCode.value,
           old_topic: oldTopicName,
           new_topic: newTopicName
         })
       })
       
       if (!response.ok) {
-        throw new Error(`HTTP error! Status: ${response.status}`)
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.detail || `HTTP error! Status: ${response.status}`)
       }
       
       const result = await response.json()
@@ -1108,12 +1156,12 @@ async function saveTopicEdit() {
         
         showNotification(`主題已重新命名為「${newTopicName}」`, 'success')
       } else {
-        showNotification(result.error || '重新命名主題失敗', 'error')
+        showNotification(result.detail || '重新命名主題失敗', 'error')
         return
       }
     } catch (error) {
       console.error('重新命名主題失敗:', error)
-      showNotification('重新命名主題失敗，請稍後再試', 'error')
+      showNotification(error.message || '重新命名主題失敗，請稍後再試', 'error')
       return
     }
     
@@ -1144,33 +1192,61 @@ async function addNewTopic() {
     await switchTopic(newTopicTitle)
     await fetchQuestions()
   } catch (error) {
-    console.error('切換到新主題失敗:', error)
+    console.error("切換到新主題時出錯:", error)
   }
 }
 
-function exportAllTopics() {
+async function exportAllTopics() {
+  if (!roomCode.value) {
+    showNotification('找不到會議室代碼', 'error')
+    return
+  }
+
+  const exportButton = document.querySelector('.btn-export-all')
+  if (exportButton) {
+    exportButton.disabled = true
+    exportButton.innerHTML = '<span class="spinner-sm"></span> 匯出中...'
+  }
+
   try {
-    // 將主題資料轉換為 JSON 文字
-    const topicsData = JSON.stringify(topics.value, null, 2)
+    const response = await fetch(`${API_BASE_URL}/api/export_pdf?room=${roomCode.value}`)
     
-    // 創建 Blob 和下載連結
-    const blob = new Blob([topicsData], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
+    if (!response.ok) {
+      throw new Error(`PDF 匯出失敗: ${response.statusText}`)
+    }
+
+    const blob = await response.blob()
+    const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
+    a.style.display = 'none'
     a.href = url
-    a.download = `會議主題_${roomCode.value}_${new Date().toISOString().split('T')[0]}.json`
+    
+    // 從 Content-Disposition header 獲取檔名
+    const contentDisposition = response.headers.get('Content-Disposition')
+    let filename = `SyncAI-Report-${roomCode.value}.pdf`
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename="?(.+)"?/)
+      if (filenameMatch && filenameMatch.length > 1) {
+        filename = filenameMatch[1]
+      }
+    }
+    
+    a.download = filename
     document.body.appendChild(a)
     a.click()
-    
-    // 清理
-    setTimeout(() => {
-      document.body.removeChild(a)
-      window.URL.revokeObjectURL(url)
-    }, 0)
-    
-    showNotification('主題資料已匯出', 'success')
-  } catch (e) {
-    showNotification('匯出失敗', 'error')
+    window.URL.revokeObjectURL(url)
+    a.remove()
+
+    showNotification('PDF 匯出成功！', 'success')
+
+  } catch (error) {
+    console.error('匯出 PDF 時出錯:', error)
+    showNotification(error.message || '匯出失敗，請稍後再試', 'error')
+  } finally {
+    if (exportButton) {
+      exportButton.disabled = false
+      exportButton.innerHTML = '<i class="fas fa-file-export"></i> 匯出全部'
+    }
   }
 }
 
@@ -1257,8 +1333,8 @@ async function startTimer() {
     clearInterval(timerInterval.value)
   }
   
-  // 更新房間狀態為討論中
-  // await setRoomStatus('Discussion')
+  // 更新房間狀態為會議中
+  await setRoomStatus('Discussion')
   
   // 記錄計時器開始時間
   const startTime = Date.now()
@@ -1273,12 +1349,14 @@ async function startTimer() {
       remainingTime.value = newRemaining
     } else {
       remainingTime.value = 0
+      // 記錄時間到之前的狀態
+      const currentStatus = roomStatus.value
       stopTimer()
       if (autoChangeStatus.value) {
-        // 根據目前狀態進行切換
-        if (roomStatus.value === 'Discussion') {
+        // 根據時間到之前的狀態進行切換
+        if (currentStatus === 'Discussion') {
           await setRoomStatus('Stop')
-        } else if (roomStatus.value === 'Stop') {
+        } else if (currentStatus === 'Stop') {
           await setRoomStatus('Discussion')
         }
         showNotification('計時器時間到！已自動切換狀態', 'info')
@@ -1313,10 +1391,10 @@ async function toggleTimer() {
   
   if (timerRunning.value) {
     await stopTimer()
-    // stopTimer 已經會設置房間狀態為 Stop
+    // stopTimer 已經會設置房間狀態為休息中
   } else {
     await startTimer()
-    // startTimer 已經會設置房間狀態為 Discussion
+    // startTimer 已經會設置房間狀態為會議中
     // 同步當前主題和計時狀態到參與者面板
     await setRoomState()
   }
@@ -1347,7 +1425,30 @@ const formattedRemainingTime = computed(() => {
 // 從本地存儲中載入計時器設置
 function loadTimerSettings() {
   try {
-    // 載入設置
+    // 檢查是否為新建的房間
+    const urlParams = new URLSearchParams(window.location.search)
+    const isNewRoom = urlParams.get('new') === 'true'
+    
+    if (isNewRoom && room.value && room.value.countdown > 0) {
+      // 新房間：使用後端提供的倒數時間
+      const backendCountdown = room.value.countdown
+      
+      timerSettings.hours = Math.floor(backendCountdown / 3600)
+      timerSettings.minutes = Math.floor((backendCountdown % 3600) / 60)
+      timerSettings.seconds = backendCountdown % 60
+      
+      initialTime.value = backendCountdown
+      remainingTime.value = backendCountdown
+      seededFromBackend.value = true // 標記為從後端初始化
+      
+      // 保存到 localStorage 以便後續使用
+      localStorage.setItem(`timer_settings_${roomCode.value}`, JSON.stringify(timerSettings))
+      
+      console.log(`新房間自動設定計時器: ${timerSettings.hours}:${timerSettings.minutes}:${timerSettings.seconds}`)
+      return
+    }
+    
+    // 現有房間：載入本地設置
     const savedSettings = localStorage.getItem(`timer_settings_${roomCode.value}`)
     if (savedSettings) {
       Object.assign(timerSettings, JSON.parse(savedSettings))
@@ -1364,6 +1465,9 @@ function loadTimerSettings() {
       timerSettings.hours = 0
       timerSettings.minutes = 5
       timerSettings.seconds = 0
+      
+      initialTime.value = 300 // 5 分鐘
+      remainingTime.value = 300
     }
     
     // 載入運行狀態
@@ -1456,19 +1560,19 @@ async function setRoomStatus(status) {
 // 新增的切換主題API函數
 async function switchTopic(topicName) {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/room_switch_topic`, {
-      method: 'POST',
+    const response = await fetch(`${API_BASE_URL}/api/rooms/${roomCode.value}/topic`, {
+      method: 'PUT',
       headers: {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        room: roomCode.value,
         topic: topicName
       })
     })
     
     if (!response.ok) {
-      throw new Error(`HTTP error! Status: ${response.status}`)
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.detail || `HTTP error! Status: ${response.status}`)
     }
     
     const data = await response.json()
@@ -1478,11 +1582,11 @@ async function switchTopic(topicName) {
       roomStatus.value = data.status
       return true
     } else {
-      throw new Error(data.error || '切換主題失敗')
+      throw new Error(data.detail || '切換主題失敗')
     }
   } catch (error) {
     console.error('切換主題失敗:', error)
-    showNotification('切換主題失敗', 'error')
+    showNotification(error.message || '切換主題失敗', 'error')
     return false
   }
 }
@@ -1521,10 +1625,34 @@ async function setRoomState() {
 
 let roomPoller
 let dataPoller
+let participantsPoller
 onMounted(async () => {
   await loadRoom()  // 等待房間載入完成
   loadTopics()
-  loadTimerSettings() // 載入計時器設置
+  loadTimerSettings() // 載入計時器設置（新房間會從後端載入倒數時間）
+  
+  // 檢查是否為新房間且需要自動開始計時
+  const urlParams = new URLSearchParams(window.location.search)
+  const isNewRoom = urlParams.get('new') === 'true'
+  
+  try {
+    const savedRunning = localStorage.getItem(`timer_running_${roomCode.value}`)
+    
+    // 新房間自動開始計時邏輯
+    if (isNewRoom && seededFromBackend.value && remainingTime.value > 0 && !timerRunning.value) {
+      console.log('新房間自動開始計時')
+      await setRoomState() // 會同時將狀態設為 Discussion
+      await startTimer()
+    }
+    // 現有房間恢復計時邏輯
+    else if (!isNewRoom && savedRunning === 'true' && remainingTime.value > 0 && !timerRunning.value) {
+      console.log('恢復現有房間的計時狀態')
+      await setRoomState() // 會同時將狀態設為 Discussion
+      await startTimer()
+    }
+  } catch (e) { 
+    console.error('自動啟動計時器失敗:', e)
+  }
     
   // 添加窗口大小變化的監聽器
   window.addEventListener('resize', updateQRCodeSize)
@@ -1546,7 +1674,7 @@ onMounted(async () => {
   }, 100)
 
   fetchParticipants()
-  setInterval(fetchParticipants, 5000)
+  participantsPoller = setInterval(fetchParticipants, 5000)
 })
 
 onBeforeUnmount(() => {
@@ -1554,6 +1682,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', updateQRCodeSize)
   clearInterval(dataPoller)
   clearInterval(roomPoller)
+  clearInterval(participantsPoller)
   
   // 停止計時器
   if (timerInterval.value) {
@@ -1564,9 +1693,13 @@ onBeforeUnmount(() => {
 
 <style scoped>
 @import url('../assets/styles.css');
-@import url('../assets/host.css');
 
-/* 更新整體佈局 */
+/* 整體佈局 */
+.host-content {
+    max-width: 1500px;
+    margin: 0 auto;
+    padding: 1.5rem 1rem;
+}
 .host-layout {
   display: grid;
   grid-template-columns: auto 1fr 350px;
@@ -1652,10 +1785,31 @@ onBeforeUnmount(() => {
 }
 
 .sidebar-bottom {
-  padding-bottom: 1rem;
+  padding: 16px;
+  border-top: 1px solid #e0e0e0;
+}
+
+.btn-export-all {
+  width: 100%;
   display: flex;
+  align-items: center;
   justify-content: center;
-  align-items: flex-end;
+  gap: 8px;
+}
+
+.spinner-sm {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .topic-item {
@@ -1845,17 +1999,23 @@ onBeforeUnmount(() => {
   color: #aaa;
   margin-top: 6px;
 }
-.share-options {
-  flex: 1 1 0;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
 .code-display {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 4px;
+  margin-top: 1rem;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+}
+
+.code-display span {
+  flex: 1;
+  font-family: 'Space Mono', monospace;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  word-break: break-all;
 }
 /* 手機直排 */
 @media (max-width: 600px) {
@@ -1922,7 +2082,7 @@ onBeforeUnmount(() => {
   justify-content: center;
   align-items: center;
   z-index: 2000;
-  animation: fadeIn 0.3s;
+  animation: fadeIn 0.2s;
   backdrop-filter: blur(4px);
 }
 
@@ -2007,7 +2167,7 @@ onBeforeUnmount(() => {
   cursor: pointer;
   color: var(--text-secondary);
   padding: 0.2rem;
-}
+ }
 
 /* 房間狀態樣式 */
 .room-status {
@@ -2038,11 +2198,6 @@ onBeforeUnmount(() => {
   background-color: #f3f4f6;
   color: #374151;
   border: 1px solid #d1d5db;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
 }
 
 @keyframes modalSlideUp {
@@ -2308,8 +2463,14 @@ onBeforeUnmount(() => {
   display: flex;
   gap: 12px;
   align-items: center;
+  gap: 0.25rem;
+  background: var(--primary-color);
+  color: white;
+  padding: 0.25rem 0.5rem;
+  border-radius: 1rem;
+  font-size: 0.75rem;
+  font-weight: 500;
 }
-
 /* 意見資訊樣式 */
 .question-info {
   display: flex;
@@ -2332,18 +2493,15 @@ onBeforeUnmount(() => {
   color: var(--primary-color);
 }
 
-.question-time {
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-}
 
-/* 調整 question-meta 布局 */
 .question-meta {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
   margin-top: 12px;
   gap: 16px;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
 }
 
 /* 響應式調整 */
@@ -2407,19 +2565,283 @@ onBeforeUnmount(() => {
   cursor: pointer;
   padding: 4px;
   color: var(--text-secondary);
+  border-radius: 0.25rem;
   transition: color 0.2s;
 }
 
 .btn-icon:hover {
-  color: var(--danger);
+    background: var(--surface);
 }
-</style>
-<style scoped>
+
+/* 以下為從 host.css 整合而來（僅保留本元件實際使用的樣式） */
+/* 導覽列右側行為與房間資訊 */
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.room-info {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.92rem;
+  align-items: center;
+}
+
+.room-code, .participant-count {
+  color: var(--text-secondary);
+}
+
+.room-code strong, .participant-count strong {
+  color: var(--primary-color);
+}
+
+/* 面板樣式 */
+.questions-panel, .control-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  overflow: hidden;
+}
+
 .panel-header {
+  padding: 1.3rem;
+  border-bottom: 1px solid var(--border);
   display: flex;
   justify-content: space-between;
   align-items: center;
+  background: var(--background);
+}
+
+.panel-header h2 {
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.panel-controls {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.panel-controls select {
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+}
+
+/* 問題清單 */
+.questions-container {
+  height: calc(100% - 80px);
+  overflow-y: auto;
   padding: 1rem;
+}
+
+.question-item {
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  transition: all 0.2s;
+}
+
+.question-item:hover {
+  border-color: var(--primary-color);
+  box-shadow: var(--shadow);
+}
+
+.question-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+}
+
+.question-text {
+  font-weight: 500;
+  color: var(--text-primary);
+  flex: 1;
+  margin-right: 1rem;
+}
+
+.question-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.ai-summary-item {
+  background: var(--ai-summary-background);
+  border: 1px solid var(--ai-summary-border-color);
+  border-left: 5px solid var(--ai-summary-accent-border-color);
+  box-shadow: 0 4px 12px var(--ai-summary-shadow-color);
+  animation: fadeInHighlight 0.5s ease;
+  /* 確保移除任何可能覆蓋背景的舊樣式 */
+  background-color: transparent !important; /* 可以加這行來強制移除單色背景的覆蓋 */
+}
+
+.ai-summary-item h3 {
+  color: var(--ai-summary-header-color);
+  /* ... 其他不變的樣式 ... */
+  margin-top: 0;
+  margin-bottom: 12px;
+  font-size: 1.15em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 注意這裡的修改 */
+.ai-summary-item .ai-content {
+  color: var(--ai-summary-content-color);
+  /* ... 其他不變的樣式 ... */
+  line-height: 1.6;
+  font-size: 0.95em;
+}
+
+/* 動畫效果保持不變 */
+@keyframes fadeInHighlight {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+
+.empty-state {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--text-secondary);
+}
+
+.empty-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+.empty-state h3 {
+  margin-bottom: 0.5rem;
+  color: var(--text-primary);
+}
+
+/* 控制面板與區段 */
+.control-panel {
+  display: flex;
+  flex-direction: column;
+  max-height: 100vh;
+  overflow-y: auto;
+  min-width: 280px;
+}
+
+.control-section {
+  padding: 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.control-section:last-child {
+  border-bottom: none;
+}
+
+.control-section h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+  color: var(--text-primary);
+}
+
+/* Switch */
+.setting-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--border);
+  transition: 0.3s;
+  border-radius: 24px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: 0.3s;
+  border-radius: 50%;
+}
+
+input:checked + .slider {
+  background-color: var(--primary-color);
+}
+
+input:checked + .slider:before {
+  transform: translateX(20px);
+}
+
+/* 統計 */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+
+.stat-item { text-align: center; }
+
+.stat-number {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--primary-color);
+  margin-bottom: 0.25rem;
+}
+
+.stat-label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+/* 響應式 */
+@media (max-width: 1024px) {
+  .control-panel { order: -1; }
+  .questions-container { height: 500px; }
+}
+
+@media (max-width: 768px) {
+  .room-info {
+    flex-direction: column;
+    gap: 0.5rem;
+    text-align: center;
+  }
+  .stats-grid { grid-template-columns: 1fr; }
+  .panel-controls { flex-direction: column; gap: 0.5rem; }
 }
 </style>
 <style scoped>

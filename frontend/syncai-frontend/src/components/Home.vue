@@ -1,9 +1,10 @@
 <template>
   <div>
     <!-- 導覽列 -->
-    <nav class="navbar">
+  <nav class="navbar">
       <div class="nav-container">
-        <div class="nav-brand">
+    <div class="nav-brand" @click="router.push('/')" aria-label="返回主頁">
+          <img src="/icon.png" alt="SyncAI" class="brand-icon" />
           <h1>SyncAI</h1>
           <span>互動問答平台</span>
         </div>
@@ -56,14 +57,66 @@
           <button class="modal-close" @click="closeModal">&times;</button>
         </div>
         <form class="modal-form" @submit.prevent="createRoom">
+          <!-- 1. 會議室名稱 -->
           <div class="form-group">
             <label for="roomTitle">會議室名稱</label>
-            <input type="text" id="roomTitle" v-model="createForm.title" required placeholder="輸入會議室名稱" />
+            <input type="text" id="roomTitle" v-model="createForm.title" required placeholder="請輸入「會議室名稱」" />
           </div>
+
+          <!-- 2. 題目 -->
           <div class="form-group">
-            <label for="hostName">主持人姓名</label>
-            <input type="text" id="hostName" v-model="createForm.host" required placeholder="輸入您的姓名" />
+            <label for="topic">題目</label>
+            <input type="text" id="topic" v-model="createForm.topic" required placeholder="請輸入「討論題目」" />
           </div>
+
+          <!-- 3. 題目摘要資訊 -->
+          <div class="form-group">
+            <label for="topicSummary">題目摘要資訊</label>
+            <textarea id="topicSummary" v-model="createForm.topicSummary" rows="4" placeholder="簡短說明這個題目（可選）"></textarea>
+          </div>
+
+          <!-- 4. 想達到效果 -->
+          <div class="form-group">
+            <label for="desiredOutcome">想達到的討論效果</label>
+            <input type="text" id="desiredOutcome" v-model="createForm.desiredOutcome" placeholder="ex. 製作企劃書、方案發想..." />
+          </div>
+
+          <!-- 5. 問題/主題數量（1~5） -->
+          <!-- <div class="form-group">
+            <label for="topicCount">問題/主題數量（1~5）</label>
+            <input type="number" id="topicCount" v-model.number="createForm.topicCount" min="1" max="5" />
+          </div> -->
+
+          <div class="form-group">
+            <label for="topic-count">問題/主題數量（1~5）</label>
+
+            <div class="slider-container">
+              <span class="slider-value">{{ createForm.topicCount }}</span>
+              <input 
+                  type="range" 
+                  id="topicCount"
+                  class="slider"
+                  min="1"
+                  max="5"
+                  step="1"  
+                  v-model="createForm.topicCount"
+              />
+            </div>
+        </div>
+
+          <!-- 6. 時間（時間選擇器 時分秒 預設15分鐘） -->
+          <div class="form-group">
+            <label>討論時間</label>
+            <div style="display:flex; gap:8px; align-items:center; justify-content:space-evenly">
+              <input type="number" v-model.number="createForm.timeHours" min="0" max="23" style="width:80px" aria-label="時" />
+              <span>時</span>
+              <input type="number" v-model.number="createForm.timeMinutes" min="0" max="59" style="width:80px" aria-label="分" />
+              <span>分</span>
+              <input type="number" v-model.number="createForm.timeSeconds" min="0" max="59" style="width:80px" aria-label="秒" />
+              <span>秒</span>
+            </div>
+          </div>
+
           <div class="form-actions">
             <button type="button" class="btn btn-outline" @click="closeModal">取消</button>
             <button type="submit" class="btn btn-primary">建立會議室</button>
@@ -121,8 +174,8 @@
           <div class="room-list">
             <div class="room-list-header">
               <span>會議室標題</span>
-              <span>主持人</span>
               <span>狀態</span>
+              <span>參與人數</span>
               <span>建立時間</span>
             </div>
             <div 
@@ -136,10 +189,10 @@
                 @click="selectRoom(room)"
               >
                 <span class="room-title">{{ room.title }}</span>
-                <span class="room-host">{{ room.host }}</span>
                 <span :class="['room-status', `status-${room.status}`]">
                   {{ getStatusText(room.status) }}
                 </span>
+                <span class="room-participants">{{ room.participants }}</span>
                 <span class="room-time">{{ formatTime(room.created_at) }}</span>
               </div>
               
@@ -220,7 +273,17 @@ const API_BASE = window.location.hostname === 'localhost'
 // --- Modal 狀態 ---
 const showCreateModal = ref(false)
 const showJoinModal = ref(false)
-const createForm = reactive({ title: '', host: '' })
+const isCreatingRoom = ref(false) // <--- 補上這行
+const createForm = reactive({ 
+  title: '', 
+  topic: '', 
+  topicSummary: '', 
+  desiredOutcome: '', 
+  topicCount: 1,
+  timeHours: 0,
+  timeMinutes: 15,
+  timeSeconds: 0,
+})
 const joinCode = ref('')
 
 // --- 會議室列表相關 ---
@@ -243,6 +306,11 @@ const filteredRooms = computed(() => {
 async function openModal(type) {
   if (type === 'create') {
     showCreateModal.value = true
+    // 預設值
+    createForm.topicCount = Math.min(Math.max(createForm.topicCount || 1, 1), 5)
+    if (createForm.timeHours === undefined) createForm.timeHours = 0
+    if (createForm.timeMinutes === undefined) createForm.timeMinutes = 15
+    if (createForm.timeSeconds === undefined) createForm.timeSeconds = 0
     setTimeout(() => document.getElementById('roomTitle')?.focus(), 200)
   }
   if (type === 'join') {
@@ -293,30 +361,48 @@ function selectRoom(room) {
 
 // --- 建立會議室 ---
 async function createRoom() {
-  if (!createForm.title.trim() || !createForm.host.trim()) {
-    showNotification('請填寫所有必填欄位', 'error')
+  if (!createForm.title.trim()) {
+    showNotification('請填寫會議室名稱', 'error')
     return
   }
+  isCreatingRoom.value = true
+
   try {
-    const resp = await fetch(`${API_BASE}/api/create_room`, {
+    const h = Number(createForm.timeHours || 0)
+    const m = Number(createForm.timeMinutes || 0)
+    const s = Number(createForm.timeSeconds || 0)
+    const duration = Math.max(0, (h * 3600) + (m * 60) + s)
+
+    // 只建立一個帶有預設主題的空房間
+    const createResp = await fetch(`${API_BASE}/api/create_room`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         title: createForm.title.trim(),
-        host: createForm.host.trim()
+        topics: ["預設主題"], // 先給一個預設主題
+        topic_summary: createForm.topicSummary?.trim() || '',
+        desired_outcome: createForm.desiredOutcome?.trim() || '',
+        topic_count: createForm.topicCount, // 傳遞數量給後端
+        countdown: duration || 0,
       })
     })
-    if (!resp.ok) throw new Error("建立失敗")
-    const data = await resp.json()
+    if (!createResp.ok) {
+      const errorData = await createResp.json().catch(() => ({}))
+      console.error('建立會議室失敗:', errorData)
+      throw new Error(`建立會議室失敗: ${errorData.detail || '請檢查後端日誌'}`)
+    }
+    const roomData = await createResp.json()
+    
     closeModal()
-    createForm.title = ''
-    createForm.host = ''
-    showNotification(`會議室建立成功！代碼：${data.code || data.room_code}`, 'success')
-    setTimeout(() => {
-      router.push(`/host?room=${data.code || data.room_code}`)
-    }, 1000)
+    showNotification(`會議室建立成功！代碼：${roomData.code}`, 'success')
+    
+    // 立刻跳轉到主持人頁面，並帶上 new=true 參數
+    router.push(`/host?room=${roomData.code}&new=true`)
+
   } catch (err) {
-    showNotification('建立會議室失敗，請稍後再試', 'error')
+    showNotification(err.message || '操作失敗，請稍後再試', 'error')
+  } finally {
+    isCreatingRoom.value = false
   }
 }
 
@@ -668,6 +754,13 @@ function removeNotification(i) {
   font-weight: 500;
 }
 
+.room-participants {
+  color: #6c757d;
+  font-size: 14px;
+  text-align: center;
+  font-weight: 600;
+}
+
 .no-rooms {
   padding: 60px 40px;
   text-align: center;
@@ -675,6 +768,24 @@ function removeNotification(i) {
   font-style: italic;
   font-size: 16px;
   background: linear-gradient(135deg, #f8f9fa, #ffffff);
+}
+
+.slider-container {
+    display: flex; /* 啟用 Flexbox 佈局 */
+    flex-direction: row; /* 確保是從左到右的水平排列 (這是預設值) */
+    align-items: center; /* 讓數字和滑桿在垂直方向上置中對齊 */
+    gap: 1rem; /* 在數字和滑桿之間增加一點間距 */
+}
+
+/* 讓數字本身有點樣式，看起來更清楚 */
+.slider-value {
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: #007bff;
+}
+
+.slider {
+    width: 100%; /* 讓滑桿填滿剩餘的空間 */
 }
 
 /* 響應式設計 */
@@ -732,19 +843,7 @@ function removeNotification(i) {
     color: #007bff;
   }
   
-  .room-host {
-    display: block;
-    margin-bottom: 8px;
-    color: #6c757d;
-    font-size: 14px;
-    text-align: left;
-  }
-  
-  .room-host::before {
-    content: "👤 主持人：";
-    color: #28a745;
-    font-weight: 500;
-  }
+  /* 主持人欄位已移除 */
   
   .room-status {
     display: inline-block;
@@ -766,6 +865,20 @@ function removeNotification(i) {
     content: "🕒 建立時間：";
     color: #ffc107;
     font-weight: 500;
+  }
+
+  .room-participants {
+    display: inline-block;
+    color: #495057;
+    font-size: 13px;
+    text-align: left;
+    margin-right: 15px;
+  }
+
+  .room-participants::before {
+    content: "👥 參與人數：";
+    color: #28a745;
+    font-weight: 600;
   }
   
   /* 篩選器優化 */
@@ -840,6 +953,8 @@ function removeNotification(i) {
     padding: 10px 20px;
     font-size: 14px;
     border-radius: 6px;
+    width: 100%;
+    justify-content: center;
   }
   
   /* 空狀態優化 */
@@ -896,11 +1011,6 @@ function removeNotification(i) {
   .form-row .form-actions {
     flex-direction: column;
     gap: 8px;
-  }
-  
-  .btn-sm {
-    width: 100%;
-    justify-content: center;
   }
   
   /* 導覽列響應式 */

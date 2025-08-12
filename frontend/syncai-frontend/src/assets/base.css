@@ -43,6 +43,13 @@
   --section-gap: 160px;
 
   --icon-default: #2563eb;
+
+  --ai-summary-background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); /* 淺藍色漸變，更融入主題 */
+  --ai-summary-border-color: #bae6fd; /* 引用或微調 --border */
+  --ai-summary-accent-border-color: var(--primary-color); /* 直接引用主題色 */
+  --ai-summary-shadow-color: rgba(37, 99, 235, 0.1); /* 配合主題色的陰影 */
+  --ai-summary-header-color: #0c4a6e; /* 較深的主題藍 */
+  --ai-summary-content-color: var(--text-primary); /* 直接引用主要文字顏色 */
 }
 
 @media (prefers-color-scheme: dark) {
@@ -68,6 +75,13 @@
     --color-text: var(--vt-c-text-dark-2);
 
     --icon-default: #b9d1ff;
+
+    --ai-summary-background: linear-gradient(135deg, #0c1e3b 0%, #0a254d 100%); /* 深藍漸變 */
+    --ai-summary-border-color: #0c4a6e;
+    --ai-summary-accent-border-color: var(--primary-color); /* 直接引用深色模式的主題色 */
+    --ai-summary-shadow-color: rgba(96, 165, 250, 0.1); /* 配合深色主題色的陰影 */
+    --ai-summary-header-color: #7dd3fc; /* 更亮的藍色，保證對比度 */
+    --ai-summary-content-color: var(--text-secondary); /* 引用次要文字顏色，避免太刺眼 */
   }
 }
 
