@@ -48,16 +48,33 @@ body {
   height: 70px; /* 可自訂 */
 }
 
+.nav-brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap; /* 讓副標可換行到下一列 */
+    cursor: pointer; /* 可點擊返回主頁 */
+}
+
 .nav-brand h1 {
     font-size: 1.5rem;
     font-weight: 700;
     color: var(--primary-color);
-    margin-bottom: 0.25rem;
+    margin: 0; /* 與圖示水平置中時不需要底邊距 */
 }
 
 .nav-brand span {
     font-size: 0.875rem;
     color: var(--text-secondary);
+    width: 100%; /* 換行到下一列 */
+    margin-left: 5px;
+}
+
+/* 全站品牌圖示（放在 public/icon.png） */
+.brand-icon {
+    width: 28px;
+    height: 28px;
+    display: inline-block;
 }
 
 .nav-actions {
@@ -204,16 +221,12 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    animation: modalFadeIn 0.3s ease;
+    animation: fadeIn 0.2s ease;
 }
 
-@keyframes modalFadeIn {
-    from {
-        opacity: 0;
-    }
-    to {
-        opacity: 1;
-    }
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
 
 .modal-content {
@@ -293,6 +306,23 @@ body {
 }
 
 .form-group input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+/* 讓多行輸入框樣式與單行輸入一致 */
+.form-group textarea {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    font-size: 1rem;
+    transition: all 0.2s;
+    resize: vertical;
+}
+
+.form-group textarea:focus {
     outline: none;
     border-color: var(--primary-color);
     box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);

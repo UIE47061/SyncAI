@@ -1,29 +1,102 @@
 # SyncAI Meeting
 
-**SyncAI** 是一款專為「內部會議協作」打造的**本地私有化 AI 互動平台**，  
-讓組織能**完全離線、即時互動**，輕鬆擁有 AI 智能助理、匿名意見收集、即時討論、AI 統整等新一代會議體驗。  
+**SyncAI** 是一款專為「內部會議協作」打造的本地私有化 AI 互動平台，  
+支援 AI 智能助理、匿名意見收集、即時討論、AI 統整等新一代會議體驗。  
 設計重點：「隱私安全」「本地運行」「高互動」「跨裝置易用」「彈性擴展」。
 
 ---
 
-## 🌟 主要特色
+## 📦 安裝步驟與相依套件
 
-- 🏠 **本地部署，數據零外洩**：所有服務與 AI 問答/摘要模型均在用戶端設備運行，不依賴雲端，適合企業/校園/封閉場域。
-- 💡 **即時生成 QR Code 入會**：主持人開啟會議主題即產生專屬房間與參與連結，手機掃描秒進會議。
-- 📲 **RWD 響應式設計**：電腦、平板、手機端皆美觀實用。
-- 💬 **匿名留言、投票、互動**：參與者無壓力發表意見，主持人可掌控匿名/署名、投票、訊息管理。
-- 🧠 **本地 AI 協作**：支援離線 LLM（如 llama.cpp/Mistral/TinyLlama）即時協助討論、會議摘要、智慧回覆，會議結論自動整理。
-- ⚡ **彈性擴充架構**：API/模組化設計，便於客製新功能（如語音輸入、NPU 最佳化、外部系統串接）。
-- 🔒 **高度隱私，開源部署**：適合有資安、個資、內部創新需求的所有單位。
+### 前端（Vue 3 + Vite）
+
+1. 進入前端目錄  
+   `cd frontend/syncai-frontend`
+2. 安裝依賴  
+   `npm install`
+3. 啟動開發伺服器  
+   `npm run dev`
+4. 開啟 [http://localhost:5173](http://localhost:5173)
+
+**主要相依套件：**
+- vue
+- vue-router
+- uuid
+
+### 後端（FastAPI + llama.cpp）
+
+1. 建立虛擬環境  
+   `python -m venv .venv`
+2. 啟動虛擬環境  
+   - Windows: `.venv\Scripts\activate`
+   - macOS/Linux: `source .venv/bin/activate`
+3. 安裝依賴  
+   `pip install -r requirement.txt`
+4. 啟動後端服務  
+   `uvicorn backend.main:app --reload --host 0.0.0.0`
+
+**主要相依套件：**
+- fastapi
+- uvicorn
+- pydantic
+- python-dotenv
+- requests
+- aiohttp
+- sqlalchemy
+- llama-cpp-python
+- jinja2
+- alembic
+- httpx
 
 ---
 
-## 🗂️ 目錄結構
+## 💻 Snapdragon X 系列筆電操作指引（NPU 加速）
+
+1. **安裝 Windows 11 並確認已啟用 NPU 驅動。**
+2. **llama-cpp-python** 支援 Windows ARM64 與 NPU 加速，請參考 [llama-cpp-python 官方文件](https://github.com/abetlen/llama-cpp-python)。
+3. 建議使用 Qualcomm AI Hub 或 Windows Dev Kit 2023 進行模型最佳化。
+4. 若需啟用 NPU，請在啟動模型時加上 NPU 相關參數，例如：
+   ```python
+   from llama_cpp import Llama
+   llm = Llama(model_path="ai_models/your_model.gguf", n_gpu_layers=0, n_ctx=4096, n_threads=8, n_npu_layers=20)
+   ```
+5. 若遇到 NPU 驅動或模型格式問題，請參考 Qualcomm 官方資源或 Windows AI 文件。
+
+---
+
+## 🧪 測試流程與驗證方式
+
+1. 前端啟動後，瀏覽器開啟首頁，輸入會議主題並建立房間。
+2. 參與者可用手機掃描 QR Code 或點擊連結加入。
+3. 測試留言、投票、AI 問答、AI 統整等功能。
+4. 可於多裝置（手機、平板、Snapdragon X 筆電）同時加入，驗證同步與互動。
+5. 若需驗證 NPU 加速，請於後端 log 或 llama-cpp-python 啟動時確認 NPU 已啟用。
+
+---
+
+## 📝 典型使用流程
+
+1. 主持人首頁輸入會議主題，點擊「開啟會議」
+2. 系統自動產生房間 ID、參與者連結（含 QRCode）
+3. 現場手機掃描/點擊即可匿名或署名加入互動頁
+4. 即時留言、投票、AI 問答、AI 自動統整重點
+5. 會議結束，一鍵取得 AI 會議摘要、行動建議
+
+---
+
+## 🛡️ 採用之開源授權
+
+本專案採用 [MIT License](https://choosealicense.com/licenses/mit/) 授權，  
+您可自由使用、修改、散布本程式碼，但請保留原始授權聲明。
+
+---
+
+## 📂 目錄結構
 
 ```
 SyncAI/
 ├── ai_models/           # 本地 LLM 模型（.gguf 等格式）
-├── backend/             # FastAPI 後端，串接本地 LLM，管理會議/訊息流
+├── backend/             # FastAPI 後端
 │   ├── main.py
 │   ├── api/
 │   └── ...
@@ -40,53 +113,10 @@ SyncAI/
 
 ---
 
-## 🚀 快速啟動指南
-
-### 前端（Vue 3 + Vite）
-
-```bash
-cd frontend/syncai-frontend
-npm install
-npm run dev
-```
-開啟 [http://localhost:5173](http://localhost:5173) 即可預覽。
-
----
-
-### 後端（FastAPI + llama.cpp）
-
-```bash
-# 進入 SyncAI 資料夾，啟動虛擬環境
-python -m venv .venv
-source .venv/bin/activate      # macOS/Linux
-.venv\Scripts\activate         # Windows
-
-# 安裝依賴
-pip install fastapi uvicorn llama-cpp-python
-
-# 啟動後端（建議用區網 IP 公開服務）
-uvicorn backend.main:app --reload --host 0.0.0.0
-```
-
-- LLM 模型建議放於 `ai_models/`，支援各種 gguf 格式模型  
-- 主要 API 包含 `/ai/ask`（AI 問答）、`/ai/summary`（AI 統整）、`/api/hostip`（主機 IP 取得）等
-
----
-
-## 📝 典型使用流程
-
-1. 主持人首頁輸入會議主題，點擊「開啟會議」
-2. 系統自動產生房間 ID、參與者連結（含 QRCode）
-3. 現場手機掃描/點擊即可匿名或署名加入互動頁
-4. 即時留言、投票、AI 問答、AI 自動統整重點
-5. 會議結束，一鍵取得 AI 會議摘要、行動建議
-
----
-
 ## 💡 進階特色 & 延伸應用
 
-- 支援 BYOM (Bring Your Own Model)／未來可串接 Qualcomm AI Hub、NPU 部署等
-- 架構可外接語音轉文字、議程規劃、工作坊互動、智慧報表等模組
+- 支援 BYOM (Bring Your Own Model)／可串接 Qualcomm AI Hub、NPU 部署
+- 架構可外接語音轉文字、議程規劃、智慧報表等模組
 - 高彈性 API，便於整合現有系統
 
 ---

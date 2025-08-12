@@ -1,8 +1,116 @@
 from fastapi import APIRouter, Request, HTTPException, Body
 from pydantic import BaseModel
-import random, string, time
+from typing import Optional, List
+import random, string, time, datetime, uuid
+from fastapi.responses import StreamingResponse
+import io
+import platform
+from urllib.parse import quote
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_LEFT, TA_CENTER
+from reportlab.lib.colors import navy, black, gray
+
+# --- Pydantic Models for RESTful API ---
+class CommentRequest(BaseModel):
+    nickname: str
+    content: str
+    isAISummary: Optional[bool] = False
+
+class VoteRequest(BaseModel):
+    device_id: str
+    vote_type: str
+
+class UpdateNicknameRequest(BaseModel):
+    new_nickname: str
+    old_nickname: Optional[str] = None
+
+class TopicUpdateRequest(BaseModel):
+    topic: str
+
+class RenameTopicRequest(BaseModel):
+    old_topic: str
+    new_topic: str
+
+# --- Pydantic Models for older/specific APIs ---
+class RoomCreate(BaseModel):
+    title: str
+    topics: List[str]
+    topic_summary: Optional[str] = None
+    desired_outcome: Optional[str] = None
+    topic_count: int
+    countdown: int = 15 * 60
+
+class AddTopicsRequest(BaseModel):
+    room: str
+    topics: List[str]
+
+class JoinRequest(BaseModel):
+    room: str
+    nickname: str
+    device_id: str
+
+class HeartbeatRequest(BaseModel):
+    room: str
+    device_id: str
+
+class UpdateRoomInfoRequest(BaseModel):
+    room: str
+    new_title: str
+    new_summary: Optional[str] = None
+
+class AllowJoinRequest(BaseModel):
+    room: str
+    allow_join: bool
+
 
 router = APIRouter()
+
+# --- PDF 匯出設定 (智慧型字型選擇) ---
+def get_chinese_font():
+    """
+    自動偵測作業系統並回傳可用的中文字型名稱與路徑。
+    """
+    os_type = platform.system()
+    
+    # 定義不同作業系統的字型搜尋路徑
+    if os_type == 'Darwin':  # macOS
+        font_map = {
+            'PingFang': '/System/Library/Fonts/PingFang.ttc',
+            'STHeiti': '/System/Library/Fonts/STHeiti Light.ttc',
+            '儷黑 Pro': '/System/Library/Fonts/儷黑 Pro.ttf',
+        }
+    elif os_type == 'Windows':
+        font_map = {
+            'MSJH': 'C:/Windows/Fonts/msjh.ttc',      # 微軟正黑體
+            'SimSun': 'C:/Windows/Fonts/simsun.ttc',   # 新宋體
+            'KaiTi': 'C:/Windows/Fonts/simkai.ttf',    # 楷體
+        }
+    else:  # Linux and others (常見路徑)
+        font_map = {
+            'WenQuanYiMicroHei': '/usr/share/fonts/wenquanyi/wqy-microhei/wqy-microhei.ttc',
+            'NotoSansCJK': '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.otf',
+        }
+
+    # 遍歷字典，嘗試註冊第一個找到的字型
+    for font_name, font_path in font_map.items():
+        try:
+            pdfmetrics.registerFont(TTFont(font_name, font_path))
+            print(f"PDF匯出：成功註冊字型 '{font_name}'")
+            return font_name
+        except Exception:
+            continue # 如果找不到或註冊失敗，繼續嘗試下一個
+            
+    # 如果所有預設字型都找不到，發出警告並使用備用字型
+    print("警告：在系統預設路徑中找不到任何可用的中文字型，PDF 中文可能無法正常顯示。")
+    return 'Helvetica'
+
+FONT_NAME = get_chinese_font()
+
 
 # 時間處理輔助函數
 def get_current_timestamp():
@@ -24,7 +132,6 @@ ROOMS = {}
     room_id: {
         "code": str,
         "title": str,
-        "host": str,
         "created_at": float,  # timestamp
         "settings": {"allowQuestions": bool, "allowVoting": bool},
         "status": str,  # NotFound, Stop, Discussion, End
@@ -59,7 +166,11 @@ votes = {}
 
 class RoomCreate(BaseModel):
     title: str
-    host: str
+    topics: List[str] # 改為接收 topics 列表
+    topic_summary: Optional[str] = None
+    desired_outcome: Optional[str] = None
+    topic_count: int # 從前端接收主題數量
+    countdown: int = 15 * 60
 
 @router.post("/api/create_room")
 def create_room(room: RoomCreate):
@@ -69,11 +180,15 @@ def create_room(room: RoomCreate):
     [POST] /api/create_room
 
     描述：
-    建立一個新的會議室，需提供會議室標題與主持人名稱。
+    建立一個新的會議室。
 
     參數：
     - room.title (str): 會議室標題
-    - room.host (str): 主持人名稱
+    - room.topics (List[str]): 主題名稱列表
+    - room.topic_summary (str, 選填): 題目摘要資訊
+    - room.desired_outcome (str, 選填): 想達到效果
+    - room.topic_count (int): 問題/主題數量
+    - room.countdown (int): 預設倒數時間（秒）
 
     回傳：
     - code (str): 房間代碼
@@ -81,32 +196,169 @@ def create_room(room: RoomCreate):
     code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
     while code in ROOMS:
         code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+        
+    title = room.title.strip()
+    countdown = int(room.countdown or 0)
+    countdown = max(0, countdown)
+    room_topics = room.topics if room.topics else ["預設主題"]
+    first_topic = room_topics[0]
+
     ROOMS[code] = {
         "code": code,
-        "title": room.title,
-        "host": room.host,
+        "title": title,
         "created_at": get_current_timestamp(),
         "participants": 0,
         "settings": {"allowQuestions": True, "allowVoting": True},
-        "status": "Stop",  # 初始化房間狀態為 Stop
-        "participants_list": [],  # 參與者列表
-        "current_topic": "主題 1",
-        "countdown": 0,
-        "time_start": 0
+        "status": "Stop",
+        "participants_list": [],
+        "current_topic": first_topic,
+        "countdown": countdown,
+        "time_start": 0,
+        "topic_summary": (room.topic_summary or "").strip(),
+        "desired_outcome": (room.desired_outcome or "").strip(),
+        "topic_count": room.topic_count, # 使用前端傳來的值
     }
-    topics[f"{code}_主題 1"] = {
-        "room_id": code,
-        "topic_name": "主題 1",
-        "comments": []
-    }
+    
+    for topic_name in room_topics:
+        topic_name_stripped = topic_name.strip()
+        if not topic_name_stripped:
+            continue
+        topics[f"{code}_{topic_name_stripped}"] = {
+            "room_id": code,
+            "topic_name": topic_name_stripped,
+            "comments": [],
+        }
+    
     return {
         "code": ROOMS[code]["code"],
         "title": ROOMS[code]["title"],
-        "host": ROOMS[code]["host"],
         "created_at": ROOMS[code]["created_at"],
         "participants": ROOMS[code]["participants"],
         "settings": ROOMS[code]["settings"]
     }
+
+@router.get("/api/export_pdf")
+def export_pdf(room: str):
+    """
+    匯出指定會議室的完整記錄為 PDF 檔案。
+    """
+    if room not in ROOMS:
+        raise HTTPException(status_code=404, detail="找不到會議室")
+
+    room_data = ROOMS[room]
+    room_topics = [t for t_id, t in topics.items() if t["room_id"] == room]
+    
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter,
+                            rightMargin=72, leftMargin=72,
+                            topMargin=72, bottomMargin=18)
+    
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(name='TitleStyle', fontName=FONT_NAME, fontSize=24, alignment=TA_CENTER, spaceAfter=20, textColor=navy))
+    styles.add(ParagraphStyle(name='HeaderStyle', fontName=FONT_NAME, fontSize=18, spaceAfter=10, textColor=black))
+    styles.add(ParagraphStyle(name='SubHeaderStyle', fontName=FONT_NAME, fontSize=14, spaceAfter=8, textColor=gray))
+    styles.add(ParagraphStyle(name='BodyStyle', fontName=FONT_NAME, fontSize=11, leading=16, alignment=TA_LEFT))
+    styles.add(ParagraphStyle(name='CommentStyle', fontName=FONT_NAME, fontSize=10, leading=14, leftIndent=20, spaceBefore=5))
+
+    story = []
+
+    # 1. 會議標題和元數據
+    story.append(Paragraph(room_data.get('title', '會議記錄'), styles['TitleStyle']))
+    story.append(Spacer(1, 12))
+    
+    created_time = datetime.datetime.fromtimestamp(room_data.get('created_at', time.time())).strftime('%Y-%m-%d %H:%M')
+    story.append(Paragraph(f"會議代碼: {room}", styles['SubHeaderStyle']))
+    story.append(Paragraph(f"建立時間: {created_time}", styles['SubHeaderStyle']))
+    
+    if room_data.get('topic_summary'):
+        story.append(Paragraph(f"摘要: {room_data['topic_summary']}", styles['BodyStyle']))
+    if room_data.get('desired_outcome'):
+        story.append(Paragraph(f"預期成果: {room_data['desired_outcome']}", styles['BodyStyle']))
+    
+    story.append(Spacer(1, 24))
+    story.append(PageBreak())
+
+    # 2. 遍歷所有主題
+    for topic in room_topics:
+        story.append(Paragraph(topic.get('topic_name', '未命名主題'), styles['HeaderStyle']))
+        story.append(Spacer(1, 12))
+
+        comments = topic.get('comments', [])
+        if not comments:
+            story.append(Paragraph("此主題下沒有任何留言。", styles['BodyStyle']))
+        else:
+            for comment in comments:
+                nickname = comment.get('nickname', '匿名')
+                content = comment.get('content', '').replace('\n', '<br/>')
+                good_votes = len(votes.get(comment.get('id', ''), {}).get('good', []))
+                bad_votes = len(votes.get(comment.get('id', ''), {}).get('bad', []))
+                
+                comment_text = f"<b>{nickname}</b> (👍{good_votes} 👎{bad_votes}):<br/>{content}"
+                story.append(Paragraph(comment_text, styles['CommentStyle']))
+                story.append(Spacer(1, 6))
+        
+        story.append(PageBreak())
+
+    doc.build(story)
+    buffer.seek(0)
+
+    # 取得會議標題，並提供預設值
+    meeting_title = room_data.get('title', f'SyncAI-Report-{room}')
+    
+    # 使用 quote 對檔名進行 URL 編碼，使其支援中文及特殊字元
+    encoded_filename = quote(meeting_title)
+
+    return StreamingResponse(buffer, media_type='application/pdf', headers={
+        'Content-Disposition': f"attachment; filename*=UTF-8''{encoded_filename}.pdf"
+    })
+
+
+@router.get("/api/room_topics")
+def get_room_topics(room: str):
+    """取得指定房間的所有主題列表"""
+    if room not in ROOMS:
+        raise HTTPException(status_code=404, detail="Room not found")
+    
+    room_topics = [
+        t["topic_name"] for t_id, t in topics.items() if t["room_id"] == room
+    ]
+    return {"topics": room_topics}
+
+class AddTopicsRequest(BaseModel):
+    room: str
+    topics: List[str]
+
+@router.post("/api/room/add_topics")
+def add_topics_to_room(req: AddTopicsRequest):
+    """為指定房間添加多個主題，並清除舊的「預設主題」"""
+    if req.room not in ROOMS:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    # 1. 刪除舊的預設主題（如果存在）
+    default_topic_id = f"{req.room}_預設主題"
+    if default_topic_id in topics:
+        del topics[default_topic_id]
+
+    # 2. 添加新主題
+    for topic_name in req.topics:
+        topic_name_stripped = topic_name.strip()
+        if not topic_name_stripped:
+            continue
+        
+        topic_id = f"{req.room}_{topic_name_stripped}"
+        if topic_id not in topics:
+            topics[topic_id] = {
+                "room_id": req.room,
+                "topic_name": topic_name_stripped,
+                "comments": [],
+            }
+    
+    # 3. 更新房間的 current_topic 為新的第一個主題
+    if req.topics:
+        ROOMS[req.room]["current_topic"] = req.topics[0].strip()
+
+    return {"success": True, "message": f"已成功為房間 {req.room} 添加 {len(req.topics)} 個主題。"}
+
 
 @router.get("/api/rooms")
 def get_rooms():
@@ -119,7 +371,7 @@ def get_rooms():
     獲取所有已建立的會議室資訊。
 
     回傳：
-    - rooms (list): 所有會議室的資訊列表，每個房間包含 code、title、host、created_at、participants、status。
+    - rooms (list): 所有會議室的資訊列表，每個房間包含 code、title、created_at、participants、status、current_topic、topic_count、topic_summary、desired_outcome、countdown。
     """
     # 將房間狀態加入到每個房間資訊中
     rooms = []
@@ -127,10 +379,14 @@ def get_rooms():
         room_info = {
             "code": room["code"],
             "title": room["title"],
-            "host": room["host"],
             "created_at": room["created_at"],
             "participants": room["participants"],
-            "status": room["status"]
+            "status": room["status"],
+            "current_topic": room.get("current_topic", ""),
+            "topic_count": room.get("topic_count", 1),
+            "topic_summary": room.get("topic_summary", ""),
+            "desired_outcome": room.get("desired_outcome", ""),
+            "countdown": room.get("countdown", 0),
         }
         rooms.append(room_info)
     return {"rooms": rooms}
@@ -182,31 +438,16 @@ def join_participant(data: JoinRequest):
         found['nickname'] = nickname  # 更新暱稱
     else:
         ROOMS[room]["participants_list"].append({"device_id": device_id, "nickname": nickname, "last_seen": now})
-    
+
+    # 更新房間參與者人數（以在線人數為準，10秒內視為在線）
+    try:
+        online_count = sum(1 for p in ROOMS[room]["participants_list"] if (now - p["last_seen"]) <= 10)
+        ROOMS[room]["participants"] = online_count
+    except Exception:
+        # 後備：若出錯則使用列表長度
+        ROOMS[room]["participants"] = len(ROOMS[room].get("participants_list", []))
+
     return {"success": True}
-
-class HeartbeatRequest(BaseModel):
-    room: str
-    device_id: str
-
-class SwitchTopicRequest(BaseModel):
-    room: str
-    topic: str
-
-class RenameTopicRequest(BaseModel):
-    room: str
-    old_topic: str
-    new_topic: str
-
-class DeleteTopicCommentsRequest(BaseModel):
-    room: str
-    topic: str
-
-class UpdateNicknameRequest(BaseModel):
-    room: str
-    device_id: str
-    old_nickname: str
-    new_nickname: str
 
 @router.post("/api/participants/heartbeat")
 def participant_heartbeat(data: HeartbeatRequest):
@@ -239,6 +480,12 @@ def participant_heartbeat(data: HeartbeatRequest):
         if p['device_id'] == device_id:
             p['last_seen'] = now
             break
+    # 更新在線人數
+    try:
+        online_count = sum(1 for p in ROOMS[room]["participants_list"] if (now - p["last_seen"]) <= 10)
+        ROOMS[room]["participants"] = online_count
+    except Exception:
+        ROOMS[room]["participants"] = len(ROOMS[room].get("participants_list", []))
     return {"success": True}
 
 @router.get("/api/participants")
@@ -264,7 +511,7 @@ def get_participants(room: str):
         online = [
             {"device_id": p["device_id"], "nickname": p["nickname"]}
             for p in ROOMS[room]["participants_list"]
-            if (now - p["last_seen"]) <= 5
+            if (now - p["last_seen"]) <= 10
         ]
         ROOMS[room]["participants_list"] = [
             p for p in ROOMS[room]["participants_list"]
@@ -362,205 +609,33 @@ def set_room_state(room: str = Body(...),
             "comments": []
         }
     
-    # 當設定主題和倒數時，自動將房間狀態設為 Discussion
-    ROOMS[room]["status"] = "Discussion"
-    
     return {"success": True, "status": "Discussion"}
 
-@router.post("/api/room_switch_topic")
-def switch_topic(data: SwitchTopicRequest):
-    """
-    切換房間主題
-    
-    [POST] /api/room_switch_topic
-    
-    描述：
-    切換指定房間的討論主題，保持原有的倒數計時和房間狀態不變。
-    
-    參數：
-    - room (str): 房間代碼
-    - topic (str): 新的討論主題
-    
-    回傳：
-    - success (bool): 是否成功切換主題
-    - topic (str): 當前主題名稱
-    - status (str): 當前房間狀態
-    """
-    room = data.room
-    topic = data.topic
-    
-    if room not in ROOMS:
-        return {"success": False, "error": "房間不存在"}
-    
-    # 更新房間的當前主題
-    ROOMS[room]["current_topic"] = topic
-    
-    # 創建主題ID並確保主題存在於 topics 字典中
-    topic_id = f"{room}_{topic}"
-    if topic_id not in topics:
-        topics[topic_id] = {
-            "room_id": room,
-            "topic_name": topic,
-            "comments": []
-        }
-    
-    return {
-        "success": True, 
-        "topic": topic,
-        "status": ROOMS[room]["status"]
-    }
-
-@router.post("/api/room_rename_topic")
-def rename_topic(data: RenameTopicRequest):
-    """
-    重新命名房間主題
-    
-    [POST] /api/room_rename_topic
-    
-    描述：
-    重新命名指定房間的主題，會更新主題名稱並保留所有評論和投票記錄。
-    如果重命名的是當前主題，則會同時更新房間的當前主題。
-    
-    參數：
-    - room (str): 房間代碼
-    - old_topic (str): 原主題名稱
-    - new_topic (str): 新主題名稱
-    
-    回傳：
-    - success (bool): 是否成功重新命名主題
-    - old_topic (str): 原主題名稱
-    - new_topic (str): 新主題名稱
-    - is_current_topic (bool): 是否為當前主題
-    """
-    room = data.room
-    old_topic = data.old_topic
-    new_topic = data.new_topic
-    
-    if room not in ROOMS:
-        return {"success": False, "error": "房間不存在"}
-    
-    if not old_topic or not new_topic:
-        return {"success": False, "error": "主題名稱不能為空"}
-    
-    # 檢查舊主題是否存在
-    old_topic_id = f"{room}_{old_topic}"
-    if old_topic_id not in topics:
-        return {"success": False, "error": "原主題不存在"}
-    
-    # 檢查新主題名稱是否已存在
-    new_topic_id = f"{room}_{new_topic}"
-    if new_topic_id in topics:
-        return {"success": False, "error": "新主題名稱已存在"}
-    
-    # 執行重命名操作
-    # 1. 複製舊主題資料到新主題ID
-    topics[new_topic_id] = {
-        "room_id": room,
-        "topic_name": new_topic,
-        "comments": topics[old_topic_id]["comments"]
-    }
-    
-    # 2. 刪除舊主題
-    del topics[old_topic_id]
-    
-    # 3. 檢查是否為當前主題，如果是則更新房間的當前主題
-    is_current_topic = False
-    if ROOMS[room]["current_topic"] == old_topic:
-        ROOMS[room]["current_topic"] = new_topic
-        is_current_topic = True
-    
-    return {
-        "success": True,
-        "old_topic": old_topic,
-        "new_topic": new_topic,
-        "is_current_topic": is_current_topic
-    }
-
-@router.delete("/api/room_topic_comments")
-def delete_topic_comments(data: DeleteTopicCommentsRequest):
-    """
-    刪除指定房間主題的所有評論
-    
-    [DELETE] /api/room_topic_comments
-    
-    描述：
-    刪除指定房間中指定主題的所有評論，同時清除相關的投票記錄。
-    如果刪除的是當前主題的評論，會清空當前主題的所有討論內容。
-    
-    參數：
-    - room (str): 房間代碼
-    - topic (str): 主題名稱
-    
-    回傳：
-    - success (bool): 是否成功刪除評論
-    - topic (str): 被清空的主題名稱
-    - deleted_comments_count (int): 刪除的評論數量
-    - deleted_votes_count (int): 刪除的投票記錄數量
-    """
-    room = data.room
-    topic = data.topic
-    
-    if room not in ROOMS:
-        return {"success": False, "error": "房間不存在"}
-    
-    if not topic:
-        return {"success": False, "error": "主題名稱不能為空"}
-    
-    # 檢查主題是否存在
-    topic_id = f"{room}_{topic}"
-    if topic_id not in topics:
-        return {"success": False, "error": "主題不存在"}
-    
-    # 統計將要刪除的評論和投票數量
-    comments = topics[topic_id]["comments"]
-    deleted_comments_count = len(comments)
-    deleted_votes_count = 0
-    
-    # 刪除所有相關的投票記錄
-    for comment in comments:
-        comment_id = comment["id"]
-        if comment_id in votes:
-            # 統計投票數量
-            deleted_votes_count += len(votes[comment_id].get("good", []))
-            deleted_votes_count += len(votes[comment_id].get("bad", []))
-            # 刪除投票記錄
-            del votes[comment_id]
-    
-    # 清空主題的評論列表
-    topics[topic_id]["comments"] = []
-    
-    return {
-        "success": True,
-        "topic": topic,
-        "deleted_comments_count": deleted_comments_count,
-        "deleted_votes_count": deleted_votes_count,
-    }
-
-# 取得主題、倒數、留言
-@router.get("/api/room_state")
+# 取得主題、倒數、留言 (RESTful 風格)
+@router.get("/api/rooms/{room}/state")
 def get_room_state(room: str):
     """
     取得房間狀態
     
-    [GET] /api/room_state
+    [GET] /api/rooms/{room}/state
     
     描述：
     取得指定房間的當前狀態，包括主題、倒數計時和當前主題的留言。
     
     參數：
-    - room (str): 房間代碼
+    - room (str): 房間代碼 (路徑參數)
     
     返回值：
     - topic (str): 當前討論主題
     - countdown (int): 剩餘倒數時間（秒）
-    - comments (list): 當前主題的留言列表，每個留言包含 nickname、content 和 ts（時間戳）
+    - comments (list): 當前主題的留言列表
+    - status (str): 房間狀態
     """
     if room not in ROOMS:
-        return {"topic": "", "countdown": 0, "comments": []}
+        raise HTTPException(status_code=404, detail="Room not found")
     
     room_info = ROOMS[room]
     
-    # 檢查房間狀態，如果房間已結束或停止，倒數計時應為0
     current_status = room_info["status"]
     if current_status in ["End", "Stop", "NotFound"]:
         left = 0
@@ -568,13 +643,11 @@ def get_room_state(room: str):
         now = get_current_timestamp()
         left = max(0, int(room_info["countdown"] - (now - room_info["time_start"]))) if room_info["time_start"] else 0
     
-    # 獲取當前主題的評論
     current_topic = room_info["current_topic"]
     current_comments = []
     if current_topic:
         topic_id = f"{room}_{current_topic}"
         if topic_id in topics:
-            # 計算投票數並添加到留言中
             comments_with_votes = []
             for comment in topics[topic_id]["comments"]:
                 comment_id = comment["id"]
@@ -592,95 +665,41 @@ def get_room_state(room: str):
     return {
         "topic": current_topic,
         "countdown": left,
-        "comments": current_comments
+        "comments": current_comments,
+        "status": current_status
     }
 
-# 新增留言
-class CommentRequest(BaseModel):
-    room: str
-    nickname: str
-    content: str
-
-class VoteRequest(BaseModel):
-    room: str
-    comment_id: str
-    device_id: str
-    vote_type: str  # "good" 或 "bad"
-
-# 取得所有留言，回傳順序依 ts 時間升冪
-@router.get("/api/room_comments")
-def get_room_comments(room: str):
-    """
-    取得房間當前主題的留言 
-    
-    [GET] /api/room_comments
-    
-    描述：
-    取得指定房間當前主題的所有留言，並按照時間戳升冪排序。
-    
-    參數：
-    - room (str): 房間代碼
-    
-    返回值：
-    - comments (list): 當前主題的留言列表，每個留言包含 nickname、content 和 ts（時間戳）
-    """
-    comments = []
-    if room in ROOMS:
-        current_topic = ROOMS[room]["current_topic"]
-        if current_topic:
-            topic_id = f"{room}_{current_topic}"
-            if topic_id in topics:
-                # 獲取留言並計算投票數
-                comments_with_votes = []
-                for comment in topics[topic_id]["comments"]:
-                    comment_id = comment["id"]
-                    vote_good = len(votes.get(comment_id, {}).get("good", []))
-                    vote_bad = len(votes.get(comment_id, {}).get("bad", []))
-                    
-                    comment_with_votes = comment.copy()
-                    comment_with_votes["vote_good"] = vote_good
-                    comment_with_votes["vote_bad"] = vote_bad
-                    comment_with_votes["votes"] = vote_good
-                    comments_with_votes.append(comment_with_votes)
-                
-                comments = sorted(comments_with_votes, key=lambda x: x["ts"])
-    
-    return {"comments": comments}
-
-@router.post("/api/room_comment")
-def add_comment(data: CommentRequest):
+# 新增留言 (RESTful 風格)
+@router.post("/api/rooms/{room}/comments")
+def add_comment(room: str, data: CommentRequest):
     """
     新增留言到當前主題
     
-    [POST] /api/room_comment
+    [POST] /api/rooms/{room}/comments
     
     描述：
     在指定房間的當前主題下新增一則留言。
     
     參數：
-    - room (str): 房間代碼
-    - nickname (str): 使用者暱稱
-    - content (str): 留言內容
+    - room (str): 房間代碼 (路徑參數)
+    - data.nickname (str): 使用者暱稱
+    - data.content (str): 留言內容
     
     返回值：
     - success (bool): 是否成功新增留言
     - comment_id (str): 新增留言的ID
     """
-    import uuid
+    if room not in ROOMS:
+        raise HTTPException(status_code=404, detail="Room not found")
     
-    if data.room not in ROOMS:
-        return {"success": False, "error": "房間不存在"}
-    
-    # 獲取當前主題
-    current_topic = ROOMS[data.room]["current_topic"]
+    current_topic = ROOMS[room]["current_topic"]
     if not current_topic:
-        return {"success": False, "error": "目前沒有設定主題"}
+        raise HTTPException(status_code=400, detail="No active topic in the room")
     
-    # 確保主題存在
-    topic_id = f"{data.room}_{current_topic}"
+    topic_id = f"{room}_{current_topic}"
     if topic_id not in topics:
         topics[topic_id] = {
-            "room_id": data.room,
+            "room_id": room,
             "topic_name": current_topic,
             "comments": []
         }
@@ -690,170 +709,198 @@ def add_comment(data: CommentRequest):
         "id": comment_id,
         "nickname": data.nickname,
         "content": data.content,
-        "ts": get_current_timestamp()
+        "ts": get_current_timestamp(),
+        "isAISummary": data.isAISummary
     }
     
     topics[topic_id]["comments"].append(new_comment)
     return {"success": True, "comment_id": comment_id}
 
-# 投票功能
-@router.post("/api/questions/vote")
-def vote_comment(data: VoteRequest):
+# 取得所有留言 (RESTful 風格)
+@router.get("/api/rooms/{room}/comments")
+def get_room_comments(room: str):
+    """
+    取得房間當前主題的留言 
+    
+    [GET] /api/rooms/{room}/comments
+    
+    描述：
+    取得指定房間當前主題的所有留言，並按照時間戳升冪排序。
+    
+    參數：
+    - room (str): 房間代碼 (路徑參數)
+    
+    返回值：
+    - comments (list): 當前主題的留言列表
+    """
+    if room not in ROOMS:
+        raise HTTPException(status_code=404, detail="Room not found")
+        
+    current_topic = ROOMS[room]["current_topic"]
+    if not current_topic:
+        return {"comments": []}
+        
+    topic_id = f"{room}_{current_topic}"
+    if topic_id not in topics:
+        return {"comments": []}
+
+    comments_with_votes = []
+    for comment in topics[topic_id]["comments"]:
+        comment_id = comment["id"]
+        vote_good = len(votes.get(comment_id, {}).get("good", []))
+        vote_bad = len(votes.get(comment_id, {}).get("bad", []))
+        
+        comment_with_votes = comment.copy()
+        comment_with_votes["vote_good"] = vote_good
+        comment_with_votes["vote_bad"] = vote_bad
+        comment_with_votes["votes"] = vote_good
+        comments_with_votes.append(comment_with_votes)
+    
+    return {"comments": sorted(comments_with_votes, key=lambda x: x["ts"])}
+
+# 刪除單一留言 (RESTful 風格)
+@router.delete("/api/rooms/{room}/comments/{comment_id}")
+def delete_comment_single(room: str, comment_id: str):
+    """
+    刪除單一留言與其投票紀錄
+
+    [DELETE] /api/rooms/{room}/comments/{comment_id}
+
+    描述：
+    傳入房號與留言 ID，刪除該留言與其所有投票紀錄。
+
+    參數：
+    - room (str): 房間代碼 (路徑參數)
+    - comment_id (str): 留言ID (路徑參數)
+
+    回傳：
+    - success (bool): 是否刪除成功
+    """
+    if room not in ROOMS:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    found = False
+    affected_topic_name = None
+    for topic_key, topic_obj in list(topics.items()):
+        if topic_obj.get("room_id") != room:
+            continue
+        comments_list = topic_obj.get("comments", [])
+        idx = next((i for i, c in enumerate(comments_list) if c.get("id") == comment_id), None)
+        if idx is not None:
+            affected_topic_name = topic_obj.get("topic_name", "")
+            comments_list.pop(idx)
+            found = True
+            break
+
+    if not found:
+        raise HTTPException(status_code=404, detail="Comment not found")
+
+    if comment_id in votes:
+        del votes[comment_id]
+
+    return {"success": True}
+
+# 投票功能 (RESTful 風格)
+@router.post("/api/rooms/{room}/comments/{comment_id}/vote")
+def vote_comment(room: str, comment_id: str, data: VoteRequest):
     """
     為留言投票
     
-    [POST] /api/questions/vote
+    [POST] /api/rooms/{room}/comments/{comment_id}/vote
     
     描述：
-    為指定留言投好評或差評票，每個設備ID只能為同一則留言的同一類型投票一次。
+    為指定留言投好評或差評票。
     
     參數：
-    - room (str): 房間代碼
-    - comment_id (str): 留言ID
-    - device_id (str): 設備ID
-    - vote_type (str): 投票類型，"good" 或 "bad"
+    - room (str): 房間代碼 (路徑參數)
+    - comment_id (str): 留言ID (路徑參數)
+    - data.device_id (str): 設備ID
+    - data.vote_type (str): "good" 或 "bad"
     
     返回值：
     - success (bool): 是否成功投票
-    - vote_good (int): 該留言的好評票數
-    - vote_bad (int): 該留言的差評票數
-    - already_voted (bool): 是否已經投過該類型的票
     """
-    room = data.room
-    comment_id = data.comment_id
-    device_id = data.device_id
     vote_type = data.vote_type
+    device_id = data.device_id
     
-    # 驗證投票類型
     if vote_type not in ["good", "bad"]:
-        return {"success": False, "error": "無效的投票類型"}
+        raise HTTPException(status_code=400, detail="Invalid vote type")
     
-    # 檢查房間是否存在
     if room not in ROOMS:
-        return {"success": False, "error": "房間不存在"}
+        raise HTTPException(status_code=404, detail="Room not found")
     
-    # 找到對應的留言
-    comment = None
-    current_topic = ROOMS[room]["current_topic"]
-    if current_topic:
-        topic_id = f"{room}_{current_topic}"
-        if topic_id in topics:
-            for c in topics[topic_id]["comments"]:
-                if c["id"] == comment_id:
-                    comment = c
-                    break
+    comment_found = any(
+        c["id"] == comment_id 
+        for t in topics.values() if t["room_id"] == room 
+        for c in t["comments"]
+    )
+    if not comment_found:
+        raise HTTPException(status_code=404, detail="Comment not found")
     
-    if not comment:
-        return {"success": False, "error": "留言不存在"}
-    
-    # 初始化投票記錄
     if comment_id not in votes:
         votes[comment_id] = {"good": [], "bad": []}
     
-    # 檢查是否已經投過該類型的票
     if device_id in votes[comment_id][vote_type]:
-        return {
-            "success": False, 
-            "already_voted": True, 
-            "vote_good": len(votes[comment_id]["good"]),
-            "vote_bad": len(votes[comment_id]["bad"])
-        }
+        raise HTTPException(status_code=409, detail="Already voted")
     
-    # 檢查是否投過相反類型的票，如果有則先移除
     opposite_type = "bad" if vote_type == "good" else "good"
     if device_id in votes[comment_id][opposite_type]:
         votes[comment_id][opposite_type].remove(device_id)
     
-    # 添加投票記錄
     votes[comment_id][vote_type].append(device_id)
     
-    vote_good = len(votes[comment_id]["good"])
-    vote_bad = len(votes[comment_id]["bad"])
-    
-    return {
-        "success": True, 
-        "vote_good": vote_good, 
-        "vote_bad": vote_bad,
-        "already_voted": False
-    }
+    return {"success": True}
 
-@router.delete("/api/questions/vote")
-def remove_vote_comment(data: VoteRequest):
+# 取消投票 (RESTful 風格)
+@router.delete("/api/rooms/{room}/comments/{comment_id}/vote")
+def remove_vote_comment(room: str, comment_id: str, data: VoteRequest):
     """
     取消投票
     
-    [DELETE] /api/questions/vote
+    [DELETE] /api/rooms/{room}/comments/{comment_id}/vote
     
     描述：
     取消對指定留言的指定類型投票。
     
     參數：
-    - room (str): 房間代碼
-    - comment_id (str): 留言ID
-    - device_id (str): 設備ID
-    - vote_type (str): 投票類型，"good" 或 "bad"
+    - room (str): 房間代碼 (路徑參數)
+    - comment_id (str): 留言ID (路徑參數)
+    - data.device_id (str): 設備ID
+    - data.vote_type (str): "good" 或 "bad"
     
     返回值：
     - success (bool): 是否成功取消投票
-    - vote_good (int): 該留言的好評票數
-    - vote_bad (int): 該留言的差評票數
     """
-    room = data.room
-    comment_id = data.comment_id
-    device_id = data.device_id
     vote_type = data.vote_type
-    
-    # 驗證投票類型
+    device_id = data.device_id
+
     if vote_type not in ["good", "bad"]:
-        return {"success": False, "error": "無效的投票類型"}
+        raise HTTPException(status_code=400, detail="Invalid vote type")
     
-    # 檢查房間是否存在
     if room not in ROOMS:
-        return {"success": False, "error": "房間不存在"}
-    
-    # 找到對應的留言
-    comment = None
-    current_topic = ROOMS[room]["current_topic"]
-    if current_topic:
-        topic_id = f"{room}_{current_topic}"
-        if topic_id in topics:
-            for c in topics[topic_id]["comments"]:
-                if c["id"] == comment_id:
-                    comment = c
-                    break
-    
-    if not comment:
-        return {"success": False, "error": "留言不存在"}
-    
-    # 檢查是否有投票記錄
+        raise HTTPException(status_code=404, detail="Room not found")
+        
     if comment_id not in votes or device_id not in votes[comment_id][vote_type]:
-        return {"success": False, "error": "未找到投票記錄"}
+        raise HTTPException(status_code=404, detail="Vote not found")
     
-    # 移除投票記錄
     votes[comment_id][vote_type].remove(device_id)
     
-    vote_good = len(votes[comment_id]["good"])
-    vote_bad = len(votes[comment_id]["bad"])
-    
-    return {
-        "success": True, 
-        "vote_good": vote_good, 
-        "vote_bad": vote_bad
-    }
+    return {"success": True}
 
-@router.get("/api/questions/votes")
+# 獲取用戶投票記錄 (RESTful 風格)
+@router.get("/api/rooms/{room}/votes")
 def get_user_votes(room: str, device_id: str):
     """
     獲取用戶的投票記錄
     
-    [GET] /api/questions/votes
+    [GET] /api/rooms/{room}/votes?device_id={device_id}
     
     描述：
     獲取指定設備在指定房間的所有投票記錄。
     
     參數：
-    - room (str): 房間代碼
-    - device_id (str): 設備ID
+    - room (str): 房間代碼 (路徑參數)
+    - device_id (str): 設備ID (查詢參數)
     
     返回值：
     - voted_good (list): 已投好評的留言ID列表
@@ -862,13 +909,10 @@ def get_user_votes(room: str, device_id: str):
     voted_good = []
     voted_bad = []
     
-    # 檢查該房間當前主題的所有留言
     if room in ROOMS:
-        current_topic = ROOMS[room]["current_topic"]
-        if current_topic:
-            topic_id = f"{room}_{current_topic}"
-            if topic_id in topics:
-                for comment in topics[topic_id]["comments"]:
+        for topic_id, topic_data in topics.items():
+            if topic_data["room_id"] == room:
+                for comment in topic_data["comments"]:
                     comment_id = comment["id"]
                     if comment_id in votes:
                         if device_id in votes[comment_id].get("good", []):
@@ -878,43 +922,33 @@ def get_user_votes(room: str, device_id: str):
     
     return {"voted_good": voted_good, "voted_bad": voted_bad}
 
-@router.post("/api/participants/update_nickname")
-def update_participant_nickname(data: UpdateNicknameRequest):
+# 更新參與者暱稱 (RESTful 風格)
+@router.put("/api/rooms/{room}/participants/{device_id}/nickname")
+def update_participant_nickname(room: str, device_id: str, data: UpdateNicknameRequest):
     """
     更新參與者暱稱
     
-    [POST] /api/participants/update_nickname
+    [PUT] /api/rooms/{room}/participants/{device_id}/nickname
     
     描述：
-    更新指定參與者的暱稱，同時會更新該參與者在當前主題下所有留言的暱稱顯示。
+    更新指定參與者的暱稱。
     
     參數：
-    - room (str): 房間代碼
-    - device_id (str): 參與者裝置ID
-    - old_nickname (str): 舊暱稱
-    - new_nickname (str): 新暱稱
+    - room (str): 房間代碼 (路徑參數)
+    - device_id (str): 參與者裝置ID (路徑參數)
+    - data.new_nickname (str): 新暱稱
     
     回傳：
     - success (bool): 是否成功更新暱稱
-    - new_nickname (str): 更新後的暱稱
-    - updated_comments_count (int): 更新的留言數量
     """
-    room = data.room
-    device_id = data.device_id
-    old_nickname = data.old_nickname
     new_nickname = data.new_nickname.strip()
     
-    # 驗證輸入
-    if not new_nickname:
-        return {"success": False, "error": "暱稱不能為空"}
-    
-    if len(new_nickname) > 10:
-        return {"success": False, "error": "暱稱不能超過10個字元"}
+    if not new_nickname or len(new_nickname) > 10:
+        raise HTTPException(status_code=400, detail="Invalid nickname")
 
     if room not in ROOMS:
-        return {"success": False, "error": "房間不存在"}
+        raise HTTPException(status_code=404, detail="Room not found")
     
-    # 更新參與者列表中的暱稱
     participant_found = False
     if "participants_list" in ROOMS[room]:
         for p in ROOMS[room]["participants_list"]:
@@ -924,24 +958,121 @@ def update_participant_nickname(data: UpdateNicknameRequest):
                 break
     
     if not participant_found:
-        return {"success": False, "error": "參與者不存在"}
+        raise HTTPException(status_code=404, detail="Participant not found")
     
-    # 更新當前主題下該用戶所有留言的暱稱
-    updated_comments_count = 0
-    for topic in list(topics.keys()):
-        if topic.find(room) != -1:
-            topic_id = topic
-            for comment in topics[topic_id]["comments"]:
-                # 通過暱稱匹配更新（因為留言中沒有直接存儲device_id）
-                if comment["nickname"] == old_nickname:
+    # 更新該用戶所有留言的暱稱
+    for topic in topics.values():
+        if topic["room_id"] == room:
+            for comment in topic["comments"]:
+                # 這裡需要一個更可靠的方式來識別用戶，但目前只能用舊暱稱
+                if comment.get("nickname") == data.old_nickname:
                     comment["nickname"] = new_nickname
-                    updated_comments_count += 1
     
-    return {
-        "success": True,
-        "new_nickname": new_nickname,
-        "updated_comments_count": updated_comments_count
-    }
+    return {"success": True}
+
+class TopicUpdateRequest(BaseModel):
+    topic: str
+
+# 更新當前主題 (RESTful 風格)
+@router.put("/api/rooms/{room}/topic")
+def update_current_topic(room: str, data: TopicUpdateRequest):
+    """
+    更新房間的當前主題
+
+    [PUT] /api/rooms/{room}/topic
+
+    描述：
+    設定指定房間當前正在討論的主題。
+
+    參數：
+    - room (str): 房間代碼 (路徑參數)
+    - data.topic (str): 新的當前主題名稱
+
+    回傳：
+    - success (bool): 是否成功更新
+    - status (str): 更新後房間的狀態
+    """
+    if room not in ROOMS:
+        raise HTTPException(status_code=404, detail="Room not found")
+    
+    new_topic = data.topic.strip()
+    
+    # 檢查新主題是否存在於該房間的主題列表中
+    topic_id = f"{room}_{new_topic}"
+    if topic_id not in topics:
+        # 如果主題不存在，可以選擇創建它或返回錯誤
+        # 這裡我們選擇創建它，以符合新增主題後直接切換的流程
+        topics[topic_id] = {
+            "room_id": room,
+            "topic_name": new_topic,
+            "comments": []
+        }
+
+    ROOMS[room]["current_topic"] = new_topic
+    ROOMS[room]["status"] = "Discussion" # 切換主題時自動進入討論狀態
+    
+    return {"success": True, "status": ROOMS[room]["status"]}
+
+# 重新命名主題 (RESTful 風格)
+@router.post("/api/rooms/{room}/topics/rename")
+def rename_topic(room: str, data: RenameTopicRequest):
+    """
+    重新命名一個主題
+
+    [POST] /api/rooms/{room}/topics/rename
+
+    描述：
+    更新指定房間中一個主題的名稱。
+
+    參數：
+    - room (str): 房間代碼 (路徑參數)
+    - data.old_topic (str): 舊的主題名稱
+    - data.new_topic (str): 新的主題名稱
+
+    回傳：
+    - success (bool): 是否成功
+    - is_current_topic (bool): 被重新命名的主題是否為當前主題
+    """
+    if room not in ROOMS:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    old_topic_name = data.old_topic.strip()
+    new_topic_name = data.new_topic.strip()
+
+    if not old_topic_name or not new_topic_name:
+        raise HTTPException(status_code=400, detail="Topic names cannot be empty")
+
+    old_topic_id = f"{room}_{old_topic_name}"
+    new_topic_id = f"{room}_{new_topic_name}"
+
+    if old_topic_id not in topics:
+        raise HTTPException(status_code=404, detail="Old topic not found")
+    
+    if new_topic_id in topics:
+        raise HTTPException(status_code=409, detail="New topic name already exists")
+
+    # 更新 topics 字典
+    topics[new_topic_id] = topics.pop(old_topic_id)
+    topics[new_topic_id]['topic_name'] = new_topic_name
+
+    # 檢查是否為當前主題
+    is_current = (ROOMS[room].get("current_topic") == old_topic_name)
+    if is_current:
+        ROOMS[room]["current_topic"] = new_topic_name
+
+    return {"success": True, "is_current_topic": is_current}
+
+
+# --- 舊的 API 端點 (標記為棄用，稍後移除) ---
+
+# @router.get("/api/room_state") ...
+# @router.post("/api/room_comment") ...
+# @router.get("/api/room_comments") ...
+# @router.delete("/api/room_comment_single") ...
+# @router.post("/api/questions/vote") ...
+# @router.delete("/api/questions/vote") ...
+# @router.get("/api/questions/votes") ...
+# @router.post("/api/participants/update_nickname") ...
 
 @router.get("/api/all_rooms")
 def get_all_rooms():
@@ -951,13 +1082,85 @@ def get_all_rooms():
     [GET] /api/all_rooms
 
     描述：
-    獲取所有房間的資訊，包括房間代碼、標題和主持人名稱。
+    獲取所有房間的資訊（調試用）。
 
     返回值：
-    - rooms (list): 所有房間的資訊列表，每個房間包含 room_id、title 和 host
+    - rooms (list): 所有房間的資訊列表
+    - topics (list): 所有主題的資訊列表
+    - votes (dict): 所有投票的資訊
     """
     return {
         "ROOMS": ROOMS, 
         "topics": topics, 
         "votes": votes
     }
+
+@router.post("/api/room_update_info")
+def update_room_info(data: UpdateRoomInfoRequest):
+    """
+    修改房間資訊
+
+    [POST] /api/room_update_info
+
+    描述：
+    修改指定房間的名稱與摘要資訊。
+
+    參數：
+    - room (str): 房間代碼
+    - new_title (str): 新的房間名稱
+    - new_summary (str): 新的題目摘要資訊（可為空字串）
+
+    回傳：
+    - success (bool): 是否成功修改
+    - room_code (str): 房間代碼
+    - new_title (str): 新房間名稱
+    """
+    room = data.room.strip()
+    new_title = data.new_title.strip()
+    new_summary = None if data.new_summary is None else (data.new_summary or "").strip()
+    
+    if not room or not new_title or len(new_title) > 50:
+        raise HTTPException(status_code=400, detail="Invalid input")
+    
+    if new_summary is not None and len(new_summary) > 2000:
+        raise HTTPException(status_code=400, detail="Summary is too long")
+
+    if room not in ROOMS:
+        raise HTTPException(status_code=404, detail="Room not found")
+    
+    ROOMS[room]["title"] = new_title
+    if new_summary is not None:
+        ROOMS[room]["topic_summary"] = new_summary
+        
+    return {
+        "success": True,
+        "room_code": room,
+        "new_title": new_title
+    }
+
+# 設定房間是否允許新參與者加入
+@router.post("/api/room_allow_join")
+def set_room_allow_join(data: AllowJoinRequest):
+    """
+    設定房間是否允許新參與者加入
+
+    [POST] /api/room_allow_join
+
+    描述：
+    設定指定房間是否允許新參與者加入。
+
+    參數：
+    - room (str): 房間代碼
+    - allow_join (bool): 是否允許加入
+
+    回傳：
+    - success (bool): 是否成功設定
+    """
+    room = data.room.strip()
+    if room not in ROOMS:
+        raise HTTPException(status_code=404, detail="Room not found")
+    
+    # 這裡我們假設有一個設定來控制，如果沒有，可以添加到 ROOMS 結構中
+    ROOMS[room].setdefault("settings", {})["allowJoin"] = data.allow_join
+    
+    return {"success": True}
