@@ -240,7 +240,7 @@ class GenerateTopicsRequest(BaseModel):
 @router.post("/generate_topics")
 def generate_ai_topics(req: GenerateTopicsRequest):
     """
-    根據會議名稱和指定數量，使用 AI 生成議程主題。使用繁體中文回覆．
+    根據會議名稱和指定數量，使用 AI 生成議程主題。
 
     [POST] /ai/generate_topics
 
@@ -263,14 +263,14 @@ def generate_ai_topics(req: GenerateTopicsRequest):
     # 這是與 AI 溝通的關鍵，我們給予它角色、任務和明確的輸出格式要求。
     prompt = f"""
         你的任務是一位專業且高效的會議主持人。
-        請根據以下提供的「會議名稱」，為這次會議腦力激盪出 {topic_count} 個最關鍵、最相關的討論議程主題。
+        請根據以下提供的「會議名稱」，為這次會議腦力激盪出 {topic_count} 個最關鍵、最相關的討論議程主題，並使用繁體中文回覆．
 
         會議名稱："{meeting_title}"
 
         你的回覆必須是一個 JSON 格式的陣列 (array)，陣列中只包含主題的字串。
         請不要包含任何數字編號、破折號、或任何其他的開場白與解釋。
 
-        例如，如果會議名稱是「2025年第三季產品開發策略會議」，你應該回傳：
+        例如，如果會議名稱是「2025年第三季產品開發策略會議」，並且主題數量是3的話，你應該回傳：
         ["回顧第二季銷售數據與客戶回饋", "討論新功能優先級與開發時程", "設定第三季的關鍵績效指標 (KPI)"]
     """
 
