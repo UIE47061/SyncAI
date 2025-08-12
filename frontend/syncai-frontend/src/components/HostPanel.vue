@@ -304,13 +304,13 @@
                   <div class="timer-time">{{ formattedRemainingTime }}</div>
                 </div>
               </div>
-              <div class="setting-row">
+              <!-- <div class="setting-row">
                 <span>時間到後自動切換會議狀態</span>
                 <label class="switch">
                   <input type="checkbox" v-model="autoChangeStatus" />
                   <span class="slider"></span>
                 </label>
-              </div>
+              </div> -->
             </div>
             <div class="control-section">
               <h3>問答設定</h3>
@@ -701,7 +701,8 @@ async function fetchQuestions() {
   if (!roomCode.value) return;
   
   try {
-    const response = await fetch(`${API_BASE_URL}/api/room_comments?room=${roomCode.value}`);
+    // 使用新的 RESTful API
+    const response = await fetch(`${API_BASE_URL}/api/rooms/${roomCode.value}/comments`);
     if (!response.ok) {
       throw new Error(`HTTP error! Status: ${response.status}`);
     }
@@ -721,15 +722,14 @@ async function fetchQuestions() {
 
 // 意見操作
 async function deleteQuestion(id) {
-  if (!roomCode.value) return
-  if (!id) return
+  if (!roomCode.value || !id) return
   if (!confirm('確定要刪除這個意見嗎？')) return
 
   try {
-    const resp = await fetch(`${API_BASE_URL}/api/room_comment_single`, {
+    // 使用新的 RESTful API
+    const resp = await fetch(`${API_BASE_URL}/api/rooms/${roomCode.value}/comments/${id}`, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ room: roomCode.value, comment_id: id })
     })
 
     if (!resp.ok) {
@@ -741,7 +741,7 @@ async function deleteQuestion(id) {
       await fetchQuestions()
       showNotification('已刪除意見', 'success')
     } else {
-      showNotification(data.error || '刪除失敗', 'error')
+      showNotification(data.detail || '刪除失敗', 'error')
     }
   } catch (e) {
     console.error('刪除意見失敗:', e)
@@ -788,18 +788,19 @@ async function summaryAI() {
 
     // --- 4. 將總結結果貼回留言區 ---
     if (data.summary) {
-      await fetch(`${API_BASE_URL}/api/room_comment`, {
+      // 使用新的 RESTful API
+      await fetch(`${API_BASE_URL}/api/rooms/${roomCode.value}/comments`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ 
-          room: roomCode.value, 
           content: data.summary,
           nickname: "SyncAI 小助手",
           isAISummary: true
         })
       });
+      await fetchQuestions(); // 新增留言後刷新
     } else {
       throw new Error("API 回應中未包含 summary 欄位。");
     }
@@ -1089,6 +1090,7 @@ async function selectTopic(index) {
   // 使用新的切換主題API
   const currentTopic = topics.value[index].title
   try {
+    // 直接呼叫新的 RESTful API
     const success = await switchTopic(currentTopic)
     if (success) {
       // 切換成功後，立即獲取新主題的評論
@@ -1123,21 +1125,21 @@ async function saveTopicEdit() {
     }
     
     try {
-      // 使用新的 rename_topic API
-      const response = await fetch(`${API_BASE_URL}/api/room_rename_topic`, {
+      // 使用新的 rename_topic RESTful API
+      const response = await fetch(`${API_BASE_URL}/api/rooms/${roomCode.value}/topics/rename`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          room: roomCode.value,
           old_topic: oldTopicName,
           new_topic: newTopicName
         })
       })
       
       if (!response.ok) {
-        throw new Error(`HTTP error! Status: ${response.status}`)
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.detail || `HTTP error! Status: ${response.status}`)
       }
       
       const result = await response.json()
@@ -1154,12 +1156,12 @@ async function saveTopicEdit() {
         
         showNotification(`主題已重新命名為「${newTopicName}」`, 'success')
       } else {
-        showNotification(result.error || '重新命名主題失敗', 'error')
+        showNotification(result.detail || '重新命名主題失敗', 'error')
         return
       }
     } catch (error) {
       console.error('重新命名主題失敗:', error)
-      showNotification('重新命名主題失敗，請稍後再試', 'error')
+      showNotification(error.message || '重新命名主題失敗，請稍後再試', 'error')
       return
     }
     
@@ -1190,33 +1192,61 @@ async function addNewTopic() {
     await switchTopic(newTopicTitle)
     await fetchQuestions()
   } catch (error) {
-    console.error('切換到新主題失敗:', error)
+    console.error("切換到新主題時出錯:", error)
   }
 }
 
-function exportAllTopics() {
+async function exportAllTopics() {
+  if (!roomCode.value) {
+    showNotification('找不到會議室代碼', 'error')
+    return
+  }
+
+  const exportButton = document.querySelector('.btn-export-all')
+  if (exportButton) {
+    exportButton.disabled = true
+    exportButton.innerHTML = '<span class="spinner-sm"></span> 匯出中...'
+  }
+
   try {
-    // 將主題資料轉換為 JSON 文字
-    const topicsData = JSON.stringify(topics.value, null, 2)
+    const response = await fetch(`${API_BASE_URL}/api/export_pdf?room=${roomCode.value}`)
     
-    // 創建 Blob 和下載連結
-    const blob = new Blob([topicsData], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
+    if (!response.ok) {
+      throw new Error(`PDF 匯出失敗: ${response.statusText}`)
+    }
+
+    const blob = await response.blob()
+    const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
+    a.style.display = 'none'
     a.href = url
-    a.download = `會議主題_${roomCode.value}_${new Date().toISOString().split('T')[0]}.json`
+    
+    // 從 Content-Disposition header 獲取檔名
+    const contentDisposition = response.headers.get('Content-Disposition')
+    let filename = `SyncAI-Report-${roomCode.value}.pdf`
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename="?(.+)"?/)
+      if (filenameMatch && filenameMatch.length > 1) {
+        filename = filenameMatch[1]
+      }
+    }
+    
+    a.download = filename
     document.body.appendChild(a)
     a.click()
-    
-    // 清理
-    setTimeout(() => {
-      document.body.removeChild(a)
-      window.URL.revokeObjectURL(url)
-    }, 0)
-    
-    showNotification('主題資料已匯出', 'success')
-  } catch (e) {
-    showNotification('匯出失敗', 'error')
+    window.URL.revokeObjectURL(url)
+    a.remove()
+
+    showNotification('PDF 匯出成功！', 'success')
+
+  } catch (error) {
+    console.error('匯出 PDF 時出錯:', error)
+    showNotification(error.message || '匯出失敗，請稍後再試', 'error')
+  } finally {
+    if (exportButton) {
+      exportButton.disabled = false
+      exportButton.innerHTML = '<i class="fas fa-file-export"></i> 匯出全部'
+    }
   }
 }
 
@@ -1303,8 +1333,8 @@ async function startTimer() {
     clearInterval(timerInterval.value)
   }
   
-  // 更新房間狀態為討論中
-  // await setRoomStatus('Discussion')
+  // 更新房間狀態為會議中
+  await setRoomStatus('Discussion')
   
   // 記錄計時器開始時間
   const startTime = Date.now()
@@ -1319,12 +1349,14 @@ async function startTimer() {
       remainingTime.value = newRemaining
     } else {
       remainingTime.value = 0
+      // 記錄時間到之前的狀態
+      const currentStatus = roomStatus.value
       stopTimer()
       if (autoChangeStatus.value) {
-        // 根據目前狀態進行切換
-        if (roomStatus.value === 'Discussion') {
+        // 根據時間到之前的狀態進行切換
+        if (currentStatus === 'Discussion') {
           await setRoomStatus('Stop')
-        } else if (roomStatus.value === 'Stop') {
+        } else if (currentStatus === 'Stop') {
           await setRoomStatus('Discussion')
         }
         showNotification('計時器時間到！已自動切換狀態', 'info')
@@ -1359,10 +1391,10 @@ async function toggleTimer() {
   
   if (timerRunning.value) {
     await stopTimer()
-    // stopTimer 已經會設置房間狀態為 Stop
+    // stopTimer 已經會設置房間狀態為休息中
   } else {
     await startTimer()
-    // startTimer 已經會設置房間狀態為 Discussion
+    // startTimer 已經會設置房間狀態為會議中
     // 同步當前主題和計時狀態到參與者面板
     await setRoomState()
   }
@@ -1393,7 +1425,30 @@ const formattedRemainingTime = computed(() => {
 // 從本地存儲中載入計時器設置
 function loadTimerSettings() {
   try {
-    // 載入設置
+    // 檢查是否為新建的房間
+    const urlParams = new URLSearchParams(window.location.search)
+    const isNewRoom = urlParams.get('new') === 'true'
+    
+    if (isNewRoom && room.value && room.value.countdown > 0) {
+      // 新房間：使用後端提供的倒數時間
+      const backendCountdown = room.value.countdown
+      
+      timerSettings.hours = Math.floor(backendCountdown / 3600)
+      timerSettings.minutes = Math.floor((backendCountdown % 3600) / 60)
+      timerSettings.seconds = backendCountdown % 60
+      
+      initialTime.value = backendCountdown
+      remainingTime.value = backendCountdown
+      seededFromBackend.value = true // 標記為從後端初始化
+      
+      // 保存到 localStorage 以便後續使用
+      localStorage.setItem(`timer_settings_${roomCode.value}`, JSON.stringify(timerSettings))
+      
+      console.log(`新房間自動設定計時器: ${timerSettings.hours}:${timerSettings.minutes}:${timerSettings.seconds}`)
+      return
+    }
+    
+    // 現有房間：載入本地設置
     const savedSettings = localStorage.getItem(`timer_settings_${roomCode.value}`)
     if (savedSettings) {
       Object.assign(timerSettings, JSON.parse(savedSettings))
@@ -1410,6 +1465,9 @@ function loadTimerSettings() {
       timerSettings.hours = 0
       timerSettings.minutes = 5
       timerSettings.seconds = 0
+      
+      initialTime.value = 300 // 5 分鐘
+      remainingTime.value = 300
     }
     
     // 載入運行狀態
@@ -1502,19 +1560,19 @@ async function setRoomStatus(status) {
 // 新增的切換主題API函數
 async function switchTopic(topicName) {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/room_switch_topic`, {
-      method: 'POST',
+    const response = await fetch(`${API_BASE_URL}/api/rooms/${roomCode.value}/topic`, {
+      method: 'PUT',
       headers: {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        room: roomCode.value,
         topic: topicName
       })
     })
     
     if (!response.ok) {
-      throw new Error(`HTTP error! Status: ${response.status}`)
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.detail || `HTTP error! Status: ${response.status}`)
     }
     
     const data = await response.json()
@@ -1524,11 +1582,11 @@ async function switchTopic(topicName) {
       roomStatus.value = data.status
       return true
     } else {
-      throw new Error(data.error || '切換主題失敗')
+      throw new Error(data.detail || '切換主題失敗')
     }
   } catch (error) {
     console.error('切換主題失敗:', error)
-    showNotification('切換主題失敗', 'error')
+    showNotification(error.message || '切換主題失敗', 'error')
     return false
   }
 }
@@ -1571,15 +1629,30 @@ let participantsPoller
 onMounted(async () => {
   await loadRoom()  // 等待房間載入完成
   loadTopics()
-  loadTimerSettings() // 載入計時器設置
-  // 若首次進入且尚未運行，且已有預設時間，則自動開始計時並同步為討論中
+  loadTimerSettings() // 載入計時器設置（新房間會從後端載入倒數時間）
+  
+  // 檢查是否為新房間且需要自動開始計時
+  const urlParams = new URLSearchParams(window.location.search)
+  const isNewRoom = urlParams.get('new') === 'true'
+  
   try {
     const savedRunning = localStorage.getItem(`timer_running_${roomCode.value}`)
-    if (seededFromBackend.value && savedRunning !== 'true' && remainingTime.value > 0 && !timerRunning.value) {
+    
+    // 新房間自動開始計時邏輯
+    if (isNewRoom && seededFromBackend.value && remainingTime.value > 0 && !timerRunning.value) {
+      console.log('新房間自動開始計時')
       await setRoomState() // 會同時將狀態設為 Discussion
       await startTimer()
     }
-  } catch (e) { /* ignore */ }
+    // 現有房間恢復計時邏輯
+    else if (!isNewRoom && savedRunning === 'true' && remainingTime.value > 0 && !timerRunning.value) {
+      console.log('恢復現有房間的計時狀態')
+      await setRoomState() // 會同時將狀態設為 Discussion
+      await startTimer()
+    }
+  } catch (e) { 
+    console.error('自動啟動計時器失敗:', e)
+  }
     
   // 添加窗口大小變化的監聽器
   window.addEventListener('resize', updateQRCodeSize)
@@ -1712,10 +1785,31 @@ onBeforeUnmount(() => {
 }
 
 .sidebar-bottom {
-  padding-bottom: 1rem;
+  padding: 16px;
+  border-top: 1px solid #e0e0e0;
+}
+
+.btn-export-all {
+  width: 100%;
   display: flex;
+  align-items: center;
   justify-content: center;
-  align-items: flex-end;
+  gap: 8px;
+}
+
+.spinner-sm {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .topic-item {
@@ -2073,7 +2167,7 @@ onBeforeUnmount(() => {
   cursor: pointer;
   color: var(--text-secondary);
   padding: 0.2rem;
-}
+ }
 
 /* 房間狀態樣式 */
 .room-status {
