@@ -35,6 +35,10 @@
 4. 啟動後端服務  
    `uvicorn backend.main:app --reload --host 0.0.0.0`
 
+### 模型
+- mistral-7b-instruct-v0.2.Q5_K_M.gguf
+下載後放到 `ai_models` 資料夾下
+
 **主要相依套件：**
 - fastapi
 - uvicorn
@@ -58,7 +62,7 @@
 4. 若需啟用 NPU，請在啟動模型時加上 NPU 相關參數，例如：
    ```python
    from llama_cpp import Llama
-   llm = Llama(model_path="ai_models/your_model.gguf", n_gpu_layers=0, n_ctx=4096, n_threads=8, n_npu_layers=20)
+   llm = Llama(model_path='ai_models/mistral-7b-instruct-v0.2.Q5_K_M.gguf', n_gpu_layers=0, n_ctx=4096, n_threads=8, n_npu_layers=20)
    ```
 5. 若遇到 NPU 驅動或模型格式問題，請參考 Qualcomm 官方資源或 Windows AI 文件。
 
