@@ -14,6 +14,12 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_LEFT, TA_CENTER
 from reportlab.lib.colors import navy, black, gray
+from reportlab.graphics.shapes import Drawing, String, colors
+from reportlab.graphics.charts.piecharts import Pie
+from reportlab.graphics.charts.barcharts import VerticalBarChart, HorizontalBarChart
+from reportlab.lib import colors as reportlab_colors
+from reportlab.graphics.widgets.markers import makeMarker
+from reportlab.graphics import renderPDF
 
 # --- Pydantic Models for RESTful API ---
 class CommentRequest(BaseModel):
@@ -244,7 +250,7 @@ def create_room(room: RoomCreate):
 @router.get("/api/export_pdf")
 def export_pdf(room: str):
     """
-    匯出指定會議室的完整記錄為 PDF 檔案。
+    匯出指定會議室的完整記錄為 PDF 檔案，帶有美化排版和圖表。
     """
     if room not in ROOMS:
         raise HTTPException(status_code=404, detail="找不到會議室")
@@ -252,58 +258,464 @@ def export_pdf(room: str):
     room_data = ROOMS[room]
     room_topics = [t for t_id, t in topics.items() if t["room_id"] == room]
     
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=letter,
-                            rightMargin=72, leftMargin=72,
-                            topMargin=72, bottomMargin=18)
+    # 過濾掉「AI 主題生成中...」等臨時主題
+    room_topics = [t for t in room_topics if not ("AI" in t.get("topic_name", "") and "生成中" in t.get("topic_name", ""))]
     
+    buffer = io.BytesIO()
+    
+    # 設定頁面大小和邊距
+    doc = SimpleDocTemplate(
+        buffer, 
+        pagesize=letter,
+        rightMargin=50, 
+        leftMargin=50,
+        topMargin=60, 
+        bottomMargin=40
+    )
+    
+    # 增強樣式集合
     styles = getSampleStyleSheet()
-    styles.add(ParagraphStyle(name='TitleStyle', fontName=FONT_NAME, fontSize=24, alignment=TA_CENTER, spaceAfter=20, textColor=navy))
-    styles.add(ParagraphStyle(name='HeaderStyle', fontName=FONT_NAME, fontSize=18, spaceAfter=10, textColor=black))
-    styles.add(ParagraphStyle(name='SubHeaderStyle', fontName=FONT_NAME, fontSize=14, spaceAfter=8, textColor=gray))
-    styles.add(ParagraphStyle(name='BodyStyle', fontName=FONT_NAME, fontSize=11, leading=16, alignment=TA_LEFT))
-    styles.add(ParagraphStyle(name='CommentStyle', fontName=FONT_NAME, fontSize=10, leading=14, leftIndent=20, spaceBefore=5))
-
+    
+    # 製作美觀的標題樣式
+    styles.add(ParagraphStyle(
+        name='TitleStyle', 
+        fontName=FONT_NAME, 
+        fontSize=24, 
+        alignment=TA_CENTER, 
+        spaceAfter=20, 
+        textColor=navy,
+        leading=30
+    ))
+    
+    # 為會議資訊製作一個特殊的樣式
+    styles.add(ParagraphStyle(
+        name='InfoBoxStyle', 
+        fontName=FONT_NAME, 
+        fontSize=10, 
+        alignment=TA_LEFT, 
+        spaceAfter=20, 
+        backColor="#F2F6FC",
+        borderWidth=1,
+        borderColor="#D4E0F4",
+        borderPadding=10,
+        leading=14
+    ))
+    
+    # 為主題標題製作一個吸引人的樣式
+    styles.add(ParagraphStyle(
+        name='HeaderStyle', 
+        fontName=FONT_NAME, 
+        fontSize=18, 
+        spaceBefore=10,
+        spaceAfter=12, 
+        textColor=navy,
+        borderColor=navy,
+        borderWidth=0,
+        borderPadding=5,
+        borderRadius=5,
+        leading=22
+    ))
+    
+    # 其他樣式
+    styles.add(ParagraphStyle(
+        name='SubHeaderStyle', 
+        fontName=FONT_NAME, 
+        fontSize=13, 
+        spaceAfter=8, 
+        textColor=gray,
+        leading=16
+    ))
+    
+    styles.add(ParagraphStyle(
+        name='BodyStyle', 
+        fontName=FONT_NAME, 
+        fontSize=11, 
+        leading=16, 
+        alignment=TA_LEFT
+    ))
+    
+    styles.add(ParagraphStyle(
+        name='CommentStyle', 
+        fontName=FONT_NAME, 
+        fontSize=10, 
+        leading=14, 
+        leftIndent=20, 
+        spaceBefore=5,
+        borderWidth=0.5,
+        borderColor="#EEEEEE",
+        borderPadding=5,
+        backColor="#FAFAFA"
+    ))
+    
+    # 添加頁腳樣式
+    styles.add(ParagraphStyle(
+        name='FooterStyle',
+        fontName=FONT_NAME,
+        fontSize=8,
+        alignment=TA_CENTER,
+        textColor=gray
+    ))
+    
+    # 新增圖表標題樣式 (缺少這個)
+    styles.add(ParagraphStyle(
+        name='ChartTitleStyle', 
+        fontName=FONT_NAME, 
+        fontSize=14, 
+        alignment=TA_CENTER,
+        spaceBefore=5,
+        spaceAfter=5, 
+        textColor=navy
+    ))
+    
+    # 製作 PDF 頁腳函數
+    def footer(canvas, doc):
+        canvas.saveState()
+        footer_text = f"SyncAI 會議系統產生於 {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')} | 會議代碼: {room}"
+        p = Paragraph(footer_text, styles["FooterStyle"])
+        w, h = p.wrap(doc.width, doc.bottomMargin)
+        p.drawOn(canvas, doc.leftMargin, h)
+        canvas.restoreState()
+    
+    # 準備文檔內容
     story = []
 
     # 1. 會議標題和元數據
     story.append(Paragraph(room_data.get('title', '會議記錄'), styles['TitleStyle']))
-    story.append(Spacer(1, 12))
+    story.append(Spacer(1, 5))
     
+    # 2. 整合所有會議資訊到一個資訊框中
     created_time = datetime.datetime.fromtimestamp(room_data.get('created_at', time.time())).strftime('%Y-%m-%d %H:%M')
-    story.append(Paragraph(f"會議代碼: {room}", styles['SubHeaderStyle']))
-    story.append(Paragraph(f"建立時間: {created_time}", styles['SubHeaderStyle']))
+    participants_count = len(room_data.get('participants_list', []))
+    topics_count = len(room_topics)
+    
+    info_text = f"<b>會議代碼:</b> {room}<br/>"
+    info_text += f"<b>建立時間:</b> {created_time}<br/>"
+    info_text += f"<b>參與者數量:</b> {participants_count}<br/>"
+    info_text += f"<b>主題數量:</b> {topics_count}<br/>"
     
     if room_data.get('topic_summary'):
-        story.append(Paragraph(f"摘要: {room_data['topic_summary']}", styles['BodyStyle']))
+        info_text += f"<br/><b>會議摘要:</b><br/>{room_data['topic_summary']}<br/>"
     if room_data.get('desired_outcome'):
-        story.append(Paragraph(f"預期成果: {room_data['desired_outcome']}", styles['BodyStyle']))
+        info_text += f"<br/><b>預期成果:</b><br/>{room_data['desired_outcome']}<br/>"
     
-    story.append(Spacer(1, 24))
+    story.append(Paragraph(info_text, styles['InfoBoxStyle']))
+    story.append(Spacer(1, 10))
+    
+    # 如果沒有主題，顯示提示訊息並直接結束
+    if not room_topics:
+        story.append(Paragraph("此會議尚未創建任何主題。", styles['BodyStyle']))
+        # 建立PDF文檔，添加頁腳
+        doc.build(story, onFirstPage=footer, onLaterPages=footer)
+        buffer.seek(0)
+        encoded_filename = quote(room_data.get('title', f'SyncAI-Report-{room}'))
+        return StreamingResponse(buffer, media_type='application/pdf', headers={
+            'Content-Disposition': f"attachment; filename*=UTF-8''{encoded_filename}.pdf"
+        })
+    
+    # 3. 添加目錄標題
+    story.append(Paragraph("主題目錄", styles['HeaderStyle']))
+    story.append(Spacer(1, 5))
+    
+    # 4. 創建主題目錄
+    for i, topic in enumerate(room_topics, 1):
+        topic_name = topic.get('topic_name', '未命名主題')
+        story.append(Paragraph(f"{i}. {topic_name}", styles['BodyStyle']))
+    
     story.append(PageBreak())
-
-    # 2. 遍歷所有主題
+    
+    # 5. 新增：會議整體統計圖表頁面
+    story.append(Paragraph("會議統計概覽", styles['HeaderStyle']))
+    story.append(Spacer(1, 10))
+    
+    # 收集圖表所需數據
+    topic_names = [t.get('topic_name', '未命名') for t in room_topics]
+    topic_comment_counts = []
+    topic_vote_counts = []
+    topic_positive_percents = []
+    
+    # 計算每個主題的留言數和投票情況
     for topic in room_topics:
-        story.append(Paragraph(topic.get('topic_name', '未命名主題'), styles['HeaderStyle']))
-        story.append(Spacer(1, 12))
+        comments = topic.get('comments', [])
+        comment_count = len(comments)
+        topic_comment_counts.append(comment_count)
+        
+        good_votes = 0
+        bad_votes = 0
+        for comment in comments:
+            comment_id = comment.get('id', '')
+            if comment_id in votes:
+                good_votes += len(votes[comment_id].get('good', []))
+                bad_votes += len(votes[comment_id].get('bad', []))
+        
+        topic_vote_counts.append(good_votes + bad_votes)
+        
+        # 計算正面評價百分比 (避免除以零)
+        if good_votes + bad_votes > 0:
+            positive_percent = (good_votes / (good_votes + bad_votes)) * 100
+        else:
+            positive_percent = 0
+        topic_positive_percents.append(positive_percent)
+    
+    # 生成主題留言數量比較圖 (長條圖)
+    if topic_names and topic_comment_counts and len(topic_names) > 1:  # 至少有2個主題才顯示比較圖
+        story.append(Paragraph("各主題留言數量比較", styles['ChartTitleStyle']))
+        
+        # 建立長條圖 - 使用數字代號而不是中文主題名稱
+        drawing = Drawing(450, 200)
+        bc = VerticalBarChart()
+        bc.x = 50
+        bc.y = 50
+        bc.height = 125
+        bc.width = 350
+        bc.data = [topic_comment_counts]
+        bc.strokeColor = reportlab_colors.black
+        
+        # 配置 X 軸 - 使用數字代號 (1, 2, 3...)
+        bc.valueAxis.valueMin = 0
+        max_count = max(topic_comment_counts) if topic_comment_counts else 0
+        bc.valueAxis.valueMax = max_count + 2
+        bc.valueAxis.valueStep = 1 if max_count < 10 else (max_count // 5)
+        
+        # 用數字代號替換中文主題名
+        bc.categoryAxis.categoryNames = [str(i+1) for i in range(len(topic_names))]
+        bc.categoryAxis.labels.boxAnchor = 'ne'
+        bc.categoryAxis.labels.dx = -8
+        bc.categoryAxis.labels.dy = -2
+        
+        # 設定顏色
+        bc.bars[0].fillColor = reportlab_colors.lightblue
+        
+        # 加入數據標籤
+        for i, value in enumerate(topic_comment_counts):
+            label = String(bc.x + bc.width/len(topic_comment_counts) * (i + 0.5), 
+                         bc.y + bc.height + 5, 
+                         str(value))
+            label.fontName = FONT_NAME
+            label.fontSize = 8
+            label.textAnchor = 'middle'
+            drawing.add(label)
+        
+        drawing.add(bc)
+        story.append(drawing)
+        story.append(Spacer(1, 10))
+        
+        # 加入圖例說明 (使用段落而非圖表標籤)
+        legend_text = "主題對應表:<br/>"
+        for i, name in enumerate(topic_names):
+            legend_text += f"{i+1}. {name}<br/>"
+        
+        story.append(Paragraph(legend_text, styles['BodyStyle']))
+        story.append(Spacer(1, 20))
 
+    # 圓餅圖也使用相同技術
+    if topic_names and any(topic_positive_percents) and any(v > 0 for v in topic_vote_counts):
+        story.append(Paragraph("各主題正面評價百分比", styles['ChartTitleStyle']))
+        
+        # 建立圓餅圖
+        drawing = Drawing(400, 200)
+        pie = Pie()
+        pie.x = 150
+        pie.y = 65
+        pie.width = 130
+        pie.height = 130
+        pie.data = [p if p > 0 else 0.1 for p in topic_positive_percents]  # 避免零值
+        # 使用數字標籤
+        pie.labels = [str(i+1) for i in range(len(topic_names))]
+        
+        # 設定顏色
+        pie.slices.strokeWidth = 0.5
+        colorscheme = [
+            reportlab_colors.lightblue, reportlab_colors.lightgreen, 
+            reportlab_colors.lightyellow, reportlab_colors.lightcoral,
+            reportlab_colors.lightsteelblue, reportlab_colors.thistle
+        ]
+        for i, color in enumerate(colorscheme):
+            if i < len(pie.slices):
+                pie.slices[i].fillColor = color
+        
+        drawing.add(pie)
+        story.append(drawing)
+        story.append(Spacer(1, 10))
+        
+        # 修改圓餅圖下方的圖例文字部分
+        legend_text = "主題正面評價百分比:<br/>"
+        for i, (name, percent, color_idx) in enumerate(zip(topic_names, topic_positive_percents, range(len(topic_names)))):
+            color_name = ["藍色", "綠色", "黃色", "紅色", "淺藍色", "紫色"][color_idx % 6]
+            # 增加每行之間的間距
+            legend_text += f"{i+1}. {name} ({percent:.1f}%) - {color_name}<br/><br/>"
+
+        story.append(Paragraph(legend_text, styles['BodyStyle']))
+        
+        # 圖例底部增加額外間距
+        story.append(Spacer(1, 10))
+        
+        # 主題列表顯示時也增加間距
+        for i, topic in enumerate(room_topics, 1):
+            topic_name = topic.get('topic_name', '未命名主題')
+            story.append(Paragraph(f"{i}. {topic_name}", styles['BodyStyle']))
+            # 每個主題後增加空行
+            story.append(Spacer(1, 8))
+
+        # 針對底部的主題百分比說明，創建一個更寬鬆的樣式
+        styles.add(ParagraphStyle(
+            name='LegendStyle', 
+            fontName=FONT_NAME, 
+            fontSize=11, 
+            leading=20,  # 增加行距
+            spaceAfter=8, 
+            alignment=TA_LEFT
+        ))
+
+        # 使用新樣式來顯示底部圖例
+        story.append(Paragraph("主題正面評價百分比:", styles['HeaderStyle']))
+        story.append(Spacer(1, 15))
+
+        for i, (name, percent) in enumerate(zip(topic_names, topic_positive_percents), 1):
+            color_name = ["藍色", "綠色", "黃色", "紅色", "淺藍色", "紫色"][(i-1) % 6]
+            # 每個項目單獨一個段落，避免擠在一起
+            story.append(Paragraph(f"{i}. {name} ({percent:.1f}%) - {color_name}", styles['LegendStyle']))
+
+    story.append(PageBreak())
+    
+    # 6. 遍歷所有主題並創建內容頁面
+    for i, topic in enumerate(room_topics, 1):
+        topic_name = topic.get('topic_name', '未命名主題')
+        
+        # 主題標題與編號
+        story.append(Paragraph(f"主題 {i}: {topic_name}", styles['HeaderStyle']))
+        story.append(Spacer(1, 8))
+        
         comments = topic.get('comments', [])
         if not comments:
             story.append(Paragraph("此主題下沒有任何留言。", styles['BodyStyle']))
         else:
+            # 添加留言統計
+            story.append(Paragraph(f"留言數量: {len(comments)}", styles['SubHeaderStyle']))
+            
+            # 計算正面與負面評價的總數
+            good_votes_total = 0
+            bad_votes_total = 0
+            comment_votes = []
+            
             for comment in comments:
+                comment_id = comment.get('id', '')
+                good_votes = 0
+                bad_votes = 0
+                if comment_id in votes:
+                    good_votes = len(votes[comment_id].get('good', []))
+                    bad_votes = len(votes[comment_id].get('bad', []))
+                    good_votes_total += good_votes
+                    bad_votes_total += bad_votes
+                
+                comment_votes.append((comment, good_votes, bad_votes))
+            
+            story.append(Paragraph(f"正面評價: {good_votes_total} | 負面評價: {bad_votes_total}", styles['SubHeaderStyle']))
+            story.append(Spacer(1, 10))
+            
+            # 只有留言數量足夠多時才顯示圖表
+            if len(comments) > 3:
+                # 生成本主題下最受歡迎的前5條留言水平長條圖
+                sorted_comments = sorted(comment_votes, key=lambda x: x[1] - x[2], reverse=True)[:5]
+                
+                if sorted_comments:
+                    story.append(Paragraph("本主題最受歡迎留言", styles['ChartTitleStyle']))
+                    
+                    # 準備圖表數據
+                    labels = []
+                    good_votes = []
+                    bad_votes = []
+                    
+                    for comment, g_vote, b_vote in sorted_comments:
+                        nickname = comment.get('nickname', '匿名')
+                        content = comment.get('content', '')
+                        # 截斷過長的留言
+                        short_content = content[:15] + '...' if len(content) > 15 else content
+                        labels.append(f"{nickname}: {short_content}")
+                        good_votes.append(g_vote)
+                        bad_votes.append(b_vote)
+                    
+                    # 建立水平長條圖
+                    drawing = Drawing(450, 200)
+                    bc = HorizontalBarChart()
+                    bc.x = 100
+                    bc.y = 20
+                    bc.height = 150
+                    bc.width = 300
+                    bc.data = [good_votes, bad_votes]
+                    bc.strokeColor = reportlab_colors.black
+                    
+                    # 配置 Y 軸 (類別軸)
+                    bc.categoryAxis.categoryNames = labels
+                    bc.categoryAxis.labels.boxAnchor = 'e'
+                    bc.categoryAxis.labels.dx = -2
+                    bc.valueAxis.valueMin = 0
+                    
+                    # 修正此處的安全檢查
+                    max_good = max(good_votes) if good_votes else 0
+                    max_bad = max(bad_votes) if bad_votes else 0
+                    max_votes = max(max_good, max_bad) + 1
+                    
+                    bc.valueAxis.valueMax = max_votes
+                    bc.valueAxis.valueStep = 1
+                    
+                    # 設定顏色
+                    bc.bars[0].fillColor = reportlab_colors.lightgreen  # 好評
+                    bc.bars[1].fillColor = reportlab_colors.lightcoral  # 差評
+                    
+                    # 添加圖例
+                    bc.bars.strokeWidth = 0.5
+                    
+                    drawing.add(bc)
+                    story.append(drawing)
+                    story.append(Spacer(1, 5))
+                    story.append(Paragraph("綠色: 正面評價 | 紅色: 負面評價", styles['SubHeaderStyle']))
+                    story.append(Spacer(1, 15))
+            
+            # 留言列表標題
+            story.append(Paragraph("留言列表:", styles['SubHeaderStyle']))
+            story.append(Spacer(1, 5))
+            
+            # 按評價高低排序留言
+            sorted_comments = sorted(comments, key=lambda c: 
+                len(votes.get(c.get('id', ''), {}).get('good', [])) - 
+                len(votes.get(c.get('id', ''), {}).get('bad', [])), 
+                reverse=True)
+            
+            for j, comment in enumerate(sorted_comments, 1):
                 nickname = comment.get('nickname', '匿名')
                 content = comment.get('content', '').replace('\n', '<br/>')
+                timestamp = datetime.datetime.fromtimestamp(comment.get('ts', time.time())).strftime('%H:%M:%S')
                 good_votes = len(votes.get(comment.get('id', ''), {}).get('good', []))
                 bad_votes = len(votes.get(comment.get('id', ''), {}).get('bad', []))
                 
-                comment_text = f"<b>{nickname}</b> (👍{good_votes} 👎{bad_votes}):<br/>{content}"
-                story.append(Paragraph(comment_text, styles['CommentStyle']))
-                story.append(Spacer(1, 6))
-        
+                # 決定留言的底色 - 根據評價高低
+                vote_score = good_votes - bad_votes
+                bg_color = "#FAFAFA"  # 默認淺灰
+                if vote_score > 2:
+                    bg_color = "#F0FFF0"  # 輕微綠色底 (正面評價高)
+                elif vote_score < -2:
+                    bg_color = "#FFF0F0"  # 輕微紅色底 (負面評價高)
+                
+                # 自定義每條留言的樣式
+                comment_style = ParagraphStyle(
+                    'CommentStyle'+str(j), 
+                    parent=styles['CommentStyle'],
+                    backColor=bg_color
+                )
+                
+                comment_text = f"<b>{j}. {nickname}</b> <font size='8'>(於 {timestamp})</font><br/>"
+                # 修改這行，將表情符號改為文字描述
+                comment_text += f"<font color='green'>正評: {good_votes}</font> | <font color='red'>負評: {bad_votes}</font><br/>"
+                comment_text += f"{content}"
+                
+                story.append(Paragraph(comment_text, comment_style))
+                story.append(Spacer(1, 5))
+            
         story.append(PageBreak())
-
-    doc.build(story)
+    
+    # 建立PDF文檔，添加頁腳
+    doc.build(story, onFirstPage=footer, onLaterPages=footer)
+    
     buffer.seek(0)
 
     # 取得會議標題，並提供預設值
@@ -313,7 +725,8 @@ def export_pdf(room: str):
     encoded_filename = quote(meeting_title)
 
     return StreamingResponse(buffer, media_type='application/pdf', headers={
-        'Content-Disposition': f"attachment; filename*=UTF-8''{encoded_filename}.pdf"
+        'Content-Disposition': f"attachment; filename*=UTF-8''{encoded_filename}.pdf",
+        'Access-Control-Allow-Origin': '*'  # 添加 CORS 允許頭
     })
 
 
@@ -538,7 +951,7 @@ def set_room_status(room: str = Body(...), status: str = Body(...)):
     - status (str): 房間狀態，必須是 Stop、Discussion 或 End
     
     返回值：
-    - success (bool): 是否成功設置狀態
+    - success (bool): 是否成功設置狀
     - status (str): 當前房間狀態
     """
     # 驗證狀態值必須是有效的狀態之一
@@ -612,7 +1025,6 @@ def set_room_state(room: str = Body(...),
             "topic_name": topic,
             "comments": []
         }
-    
     return {"success": True, "status": "Discussion"}
 
 # 取得主題、倒數、留言 (RESTful 風格)
