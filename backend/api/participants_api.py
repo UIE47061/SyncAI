@@ -2,7 +2,7 @@ from fastapi import APIRouter, Request, HTTPException, Body
 from pydantic import BaseModel
 from typing import Optional, List
 import random, string, time, datetime, uuid
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 import io
 import platform
 from urllib.parse import quote
@@ -674,20 +674,6 @@ def get_room_state(room: str):
 def add_comment(room: str, data: CommentRequest):
     """
     新增留言到當前主題
-    
-    [POST] /api/rooms/{room}/comments
-    
-    描述：
-    在指定房間的當前主題下新增一則留言。
-    
-    參數：
-    - room (str): 房間代碼 (路徑參數)
-    - data.nickname (str): 使用者暱稱
-    - data.content (str): 留言內容
-    
-    返回值：
-    - success (bool): 是否成功新增留言
-    - comment_id (str): 新增留言的ID
     """
     if room not in ROOMS:
         raise HTTPException(status_code=404, detail="Room not found")
@@ -704,13 +690,23 @@ def add_comment(room: str, data: CommentRequest):
             "comments": []
         }
     
+    # 取得提交者的 device_id
+    # 這是一個簡化的假設，正式產品中應有更安全的驗證
+    device_id = None
+    if "participants_list" in ROOMS[room]:
+        for p in ROOMS[room]["participants_list"]:
+            if p['nickname'] == data.nickname:
+                device_id = p['device_id']
+                break
+
     comment_id = str(uuid.uuid4())
     new_comment = {
         "id": comment_id,
         "nickname": data.nickname,
         "content": data.content,
         "ts": get_current_timestamp(),
-        "isAISummary": data.isAISummary
+        "isAISummary": data.isAISummary,
+        "device_id": device_id  # *** 重要：儲存 device_id ***
     }
     
     topics[topic_id]["comments"].append(new_comment)
@@ -923,32 +919,21 @@ def get_user_votes(room: str, device_id: str):
     return {"voted_good": voted_good, "voted_bad": voted_bad}
 
 # 更新參與者暱稱 (RESTful 風格)
+
 @router.put("/api/rooms/{room}/participants/{device_id}/nickname")
 def update_participant_nickname(room: str, device_id: str, data: UpdateNicknameRequest):
     """
-    更新參與者暱稱
-    
-    [PUT] /api/rooms/{room}/participants/{device_id}/nickname
-    
-    描述：
-    更新指定參與者的暱稱。
-    
-    參數：
-    - room (str): 房間代碼 (路徑參數)
-    - device_id (str): 參與者裝置ID (路徑參數)
-    - data.new_nickname (str): 新暱稱
-    
-    回傳：
-    - success (bool): 是否成功更新暱稱
+    更新參與者暱稱，並同步更新該用戶的所有留言。
     """
     new_nickname = data.new_nickname.strip()
     
     if not new_nickname or len(new_nickname) > 10:
-        raise HTTPException(status_code=400, detail="Invalid nickname")
+        raise HTTPException(status_code=400, detail="暱稱格式不符或過長")
 
     if room not in ROOMS:
-        raise HTTPException(status_code=404, detail="Room not found")
+        raise HTTPException(status_code=404, detail="會議室不存在")
     
+    # 1. 更新參與者列表中的暱稱
     participant_found = False
     if "participants_list" in ROOMS[room]:
         for p in ROOMS[room]["participants_list"]:
@@ -958,20 +943,16 @@ def update_participant_nickname(room: str, device_id: str, data: UpdateNicknameR
                 break
     
     if not participant_found:
-        raise HTTPException(status_code=404, detail="Participant not found")
+        raise HTTPException(status_code=404, detail="參與者不存在")
     
-    # 更新該用戶所有留言的暱稱
+    # 2. *** 重要：使用 device_id 更新該用戶所有留言的暱稱 ***
     for topic in topics.values():
         if topic["room_id"] == room:
             for comment in topic["comments"]:
-                # 這裡需要一個更可靠的方式來識別用戶，但目前只能用舊暱稱
-                if comment.get("nickname") == data.old_nickname:
+                if comment.get("device_id") == device_id:
                     comment["nickname"] = new_nickname
     
-    return {"success": True}
-
-class TopicUpdateRequest(BaseModel):
-    topic: str
+    return {"success": True, "message": "暱稱已更新"}
 
 # 更新當前主題 (RESTful 風格)
 @router.put("/api/rooms/{room}/topic")
