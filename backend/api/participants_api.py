@@ -999,20 +999,6 @@ def update_current_topic(room: str, data: TopicUpdateRequest):
 def rename_topic(room: str, data: RenameTopicRequest):
     """
     重新命名一個主題
-
-    [POST] /api/rooms/{room}/topics/rename
-
-    描述：
-    更新指定房間中一個主題的名稱。
-
-    參數：
-    - room (str): 房間代碼 (路徑參數)
-    - data.old_topic (str): 舊的主題名稱
-    - data.new_topic (str): 新的主題名稱
-
-    回傳：
-    - success (bool): 是否成功
-    - is_current_topic (bool): 被重新命名的主題是否為當前主題
     """
     if room not in ROOMS:
         raise HTTPException(status_code=404, detail="Room not found")
@@ -1022,19 +1008,23 @@ def rename_topic(room: str, data: RenameTopicRequest):
 
     if not old_topic_name or not new_topic_name:
         raise HTTPException(status_code=400, detail="Topic names cannot be empty")
+    
+    if old_topic_name == new_topic_name:
+        return {"success": True, "is_current_topic": False, "detail": "No change in topic name."}
 
     old_topic_id = f"{room}_{old_topic_name}"
     new_topic_id = f"{room}_{new_topic_name}"
 
     if old_topic_id not in topics:
-        raise HTTPException(status_code=404, detail="Old topic not found")
+        raise HTTPException(status_code=404, detail=f"Old topic '{old_topic_name}' not found")
     
     if new_topic_id in topics:
-        raise HTTPException(status_code=409, detail="New topic name already exists")
+        raise HTTPException(status_code=409, detail=f"New topic name '{new_topic_name}' already exists")
 
     # 更新 topics 字典
-    topics[new_topic_id] = topics.pop(old_topic_id)
-    topics[new_topic_id]['topic_name'] = new_topic_name
+    topic_data = topics.pop(old_topic_id)
+    topic_data['topic_name'] = new_topic_name
+    topics[new_topic_id] = topic_data
 
     # 檢查是否為當前主題
     is_current = (ROOMS[room].get("current_topic") == old_topic_name)
@@ -1042,6 +1032,40 @@ def rename_topic(room: str, data: RenameTopicRequest):
         ROOMS[room]["current_topic"] = new_topic_name
 
     return {"success": True, "is_current_topic": is_current}
+
+@router.delete("/api/rooms/{room_code}/topics/{topic_title}")
+async def delete_room_topic(room_code: str, topic_title: str):
+    """
+    刪除一個主題及其所有相關資料。
+    """
+    if room_code not in ROOMS:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    room = ROOMS[room_code]
+    topic_id_to_delete = f"{room_code}_{topic_title}"
+
+    if topic_id_to_delete not in topics:
+        raise HTTPException(status_code=404, detail=f"Topic '{topic_title}' not found in this room")
+
+    # 1. 收集要刪除的留言ID
+    comments_in_topic = topics[topic_id_to_delete].get("comments", [])
+    comment_ids_to_delete = [c.get("id") for c in comments_in_topic if c.get("id")]
+
+    # 2. 刪除相關的投票
+    for comment_id in comment_ids_to_delete:
+        if comment_id in votes:
+            del votes[comment_id]
+
+    # 3. 刪除主題本身
+    del topics[topic_id_to_delete]
+
+    # 4. 如果被刪除的是當前主題，則更新房間的當前主題
+    if room.get("current_topic") == topic_title:
+        # 尋找一個新的主題來設定為當前主題
+        remaining_topics = [t['topic_name'] for t_id, t in topics.items() if t.get("room_id") == room_code]
+        room["current_topic"] = remaining_topics[0] if remaining_topics else None
+    
+    return {"success": True, "detail": f"Topic '{topic_title}' and its comments have been deleted."}
 
 
 # --- 舊的 API 端點 (標記為棄用，稍後移除) ---

@@ -320,3 +320,53 @@ def generate_ai_topics(req: GenerateTopicsRequest):
         # 處理呼叫 AI 時可能發生的任何錯誤
         print(f"Error calling LLM for topic generation: {e}")
         return {"topics": [f"抱歉，AI 服務暫時無法連線，請稍後再試。"]}
+
+# 新增的請求模型，用於 generate_single_topic 端點
+class GenerateSingleTopicRequest(BaseModel):
+    room: str
+    custom_prompt: str
+
+@router.post("/generate_single_topic")
+def generate_single_topic(req: GenerateSingleTopicRequest):
+    """
+    根據會議室和自訂提示，使用 AI 生成單一議程主題。
+
+    [POST] /ai/generate_single_topic
+
+    參數：
+    - room (str): 會議室代碼
+    - custom_prompt (str): 自訂的提示語句，用於引導 AI 生成主題
+
+    回傳：
+    - topic (str): AI 生成的主題字串
+    """
+    # 檢查會議室是否存在
+    if req.room not in ROOMS:
+        return {"topic": "錯誤：找不到指定的會議室。"}
+
+    room_data = ROOMS[req.room]
+
+    # --- 開始建立 Prompt ---
+    prompt = f"會議室: {req.room}\n"
+
+    # 取得參與者列表
+    participants = [p.get("nickname", "匿名") for p in room_data.get("participants_list", [])]
+    if participants:
+        prompt += f"參與者: {', '.join(participants)}\n"
+
+    prompt += "\n請根據以上資訊，生成一個精簡且具體的議程主題。"
+
+    # 加上使用者自訂的提示
+    prompt += f"\n\n自訂提示: {req.custom_prompt}"
+
+    # 呼叫 AI 模型
+    output = llm(
+        prompt,
+        max_tokens=64,
+        stop=["</s>"],
+        echo=False,
+        temperature=0.8,
+    )
+    
+    topic = output["choices"][0]["text"].strip()
+    return {"topic": topic}

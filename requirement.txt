@@ -9,3 +9,4 @@ llama-cpp-python
 jinja2
 alembic
 httpx
+reportlab

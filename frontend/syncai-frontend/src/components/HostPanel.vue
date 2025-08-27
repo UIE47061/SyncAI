@@ -55,20 +55,57 @@
               <div v-if="editingTopicIndex !== null" class="topic-edit-overlay">
                 <div class="topic-edit-container">
                   <h3>編輯主題</h3>
-                  <input 
-                    ref="topicEditInput"
-                    v-model="editingTopicName" 
-                    @keyup.enter="saveTopicEdit" 
-                    @keyup.esc="cancelTopicEdit"
-                    class="topic-edit-input"
-                    placeholder="輸入主題名稱"
-                  />
-                  <div class="topic-edit-actions">
-                    <button @click="saveTopicEdit" class="btn btn-primary">
-                      <i class="fa-solid fa-check"></i> 保存
+                  
+                  <!-- 頁籤導覽 -->
+                  <div class="edit-topic-tabs">
+                    <button :class="{ active: editTopicTab === 'manual' }" @click="editTopicTab = 'manual'">
+                      <i class="fa-solid fa-keyboard"></i> 自行輸入
                     </button>
-                    <button @click="cancelTopicEdit" class="btn btn-outline">
-                      <i class="fa-solid fa-xmark"></i> 取消
+                    <button :class="{ active: editTopicTab === 'ai' }" @click="editTopicTab = 'ai'">
+                      <i class="fa-solid fa-lightbulb"></i> AI 發想
+                    </button>
+                  </div>
+
+                  <!-- 頁籤內容 -->
+                  <div class="edit-topic-content">
+                    <!-- 手動輸入 -->
+                    <div v-if="editTopicTab === 'manual'">
+                      <input 
+                        ref="topicEditInput"
+                        v-model="editingTopicName" 
+                        @keyup.enter="saveTopicEdit" 
+                        @keyup.esc="cancelTopicEdit"
+                        class="topic-edit-input"
+                        placeholder="輸入主題名稱"
+                      />
+                    </div>
+                    <!-- AI 發想 -->
+                    <div v-if="editTopicTab === 'ai'">
+                      <div class="ai-brainstorm-section">
+                        <label class="ai-brainstorm-label">請描述您希望 AI 發想的主題方向</label>
+                        <textarea
+                          v-model="customAiPrompt"
+                          class="ai-prompt-input"
+                          placeholder="例如：「一個關於提升團隊協作效率的創新方法」"
+                          rows="3"
+                        ></textarea>
+                        <!-- 按鈕已移除 -->
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="topic-edit-actions">
+                    <button 
+                      class="btn btn-primary" 
+                      @click="handleTopicEditConfirm" 
+                      :disabled="(editTopicTab === 'manual' && !editingTopicName.trim()) || (editTopicTab === 'ai' && !customAiPrompt.trim())"
+                    >
+                      <i :class="editTopicTab === 'ai' ? 'fa-solid fa-lightbulb' : 'fa-solid fa-check'"></i>
+                      {{ editTopicTab === 'ai' ? '產生' : '儲存' }}
+                    </button>
+                    <button class="btn btn-outline" @click="cancelTopicEdit">
+                      <i class="fa-solid fa-xmark"></i>
+                      取消
                     </button>
                   </div>
                 </div>
@@ -447,7 +484,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, watch, onBeforeUnmount } from 'vue'
+import { ref, reactive, computed, onMounted, watch, onBeforeUnmount, nextTick } from 'vue'
 import QrcodeVue from 'qrcode.vue'
 import { useRouter } from 'vue-router'
 
@@ -504,7 +541,11 @@ const topics = ref([
 const selectedTopicIndex = ref(0)
 const editingTopicIndex = ref(null)
 const editingTopicName = ref('')
-
+const originalTopicNameToEdit = ref('') // 新增：儲存原始主題名稱
+const editTopicTab = ref('manual')
+const customAiPrompt = ref('')
+const isGeneratingTopic = ref(false)
+const topicSwipeState = ref({}); // { index: { startX, currentX, translateX, isDragging } }
 // 統計
 const totalVotes = computed(() => questions.value.reduce((sum, q) => sum + (q.vote_good || 0) + (q.vote_bad || 0), 0))
 
@@ -786,7 +827,7 @@ async function summaryAI() {
     // 解析回傳的 JSON 資料
     const data = await response.json();
 
-    // --- 4. 將總結結果貼回留言區 ---
+    // --- 4.將總結結果貼回留言區 ---
     if (data.summary) {
       // 使用新的 RESTful API
       await fetch(`${API_BASE_URL}/api/rooms/${roomCode.value}/comments`, {
@@ -1104,12 +1145,15 @@ async function selectTopic(index) {
 function startEditTopic(index) {
   editingTopicIndex.value = index
   editingTopicName.value = topics.value[index].title
+  originalTopicNameToEdit.value = topics.value[index].title // 新增：儲存原始名稱
+  editTopicTab.value = 'manual'
   // 在下一個 DOM 更新循環後聚焦到輸入框
-  setTimeout(() => {
-    if (editingTopicIndex.value !== null && document.querySelector('.topic-edit-input')) {
-      document.querySelector('.topic-edit-input').focus()
+  nextTick(() => {
+    const input = document.querySelector('.topic-edit-input');
+    if (input) {
+      input.focus();
     }
-  }, 50)
+  });
 }
 
 async function saveTopicEdit() {
@@ -1173,26 +1217,121 @@ async function saveTopicEdit() {
 function cancelTopicEdit() {
   editingTopicIndex.value = null
   editingTopicName.value = ''
+  customAiPrompt.value = ''
+  originalTopicNameToEdit.value = '' // 新增：清除原始名稱
+  editTopicTab.value = 'manual'
 }
 
-async function addNewTopic() {
-  const newTopicTitle = `主題 ${topics.value.length + 1}`
-  topics.value.push({
-    title: newTopicTitle,
-    content: '',
-    timestamp: new Date().toISOString()
-  })
-  // 選擇新添加的主題
-  const newIndex = topics.value.length - 1
-  selectedTopicIndex.value = newIndex
-  saveTopics()
-  
-  // 自動切換到新主題
+async function handleTopicEditConfirm() {
+  if (editTopicTab.value === 'manual') {
+    await saveTopicEdit()
+  } else if (editTopicTab.value === 'ai') {
+    await generateAndReplaceTopic()
+  }
+}
+
+async function generateAndReplaceTopic() {
+  if (!customAiPrompt.value.trim()) {
+    showNotification('請輸入 AI 發想的提示', 'warn')
+    return
+  }
+
+  const topicIndex = editingTopicIndex.value
+  const originalTopic = originalTopicNameToEdit.value
+  const prompt = customAiPrompt.value
+
+  // 1. 關閉彈窗並設定載入狀態
+  cancelTopicEdit()
+  if (topicIndex !== null) {
+    topics.value[topicIndex].title = 'AI 產生中...'
+  }
+
   try {
-    await switchTopic(newTopicTitle)
-    await fetchQuestions()
+    // 2. 呼叫後端生成新主題
+    const response = await fetch(`${API_BASE_URL}/ai/generate_single_topic`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        room: roomCode.value,
+        custom_prompt: prompt,
+      }),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.detail || `HTTP error! Status: ${response.status}`)
+    }
+
+    const result = await response.json()
+    if (!result.topic) {
+      throw new Error('AI 未能生成主題')
+    }
+    const newTopicName = result.topic
+
+    // 3. 呼叫後端 API 將舊主題重命名為新主題
+    const renameResponse = await fetch(`${API_BASE_URL}/api/rooms/${roomCode.value}/topics/rename`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ old_topic: originalTopic, new_topic: newTopicName }),
+    })
+
+    if (!renameResponse.ok) {
+      const errorData = await renameResponse.json().catch(() => ({}))
+      throw new Error(errorData.detail || `HTTP error! Status: ${renameResponse.status}`)
+    }
+
+    const renameResult = await renameResponse.json()
+    if (renameResult.success) {
+      // 4. 更新前端列表
+      topics.value[topicIndex].title = newTopicName
+      showNotification(`AI 已生成新主題：「${newTopicName}」`, 'success')
+    } else {
+      throw new Error(renameResult.detail || '重命名主題失敗')
+    }
   } catch (error) {
-    console.error("切換到新主題時出錯:", error)
+    console.error('AI 主題生成與替換失敗:', error)
+    showNotification(error.message, 'error')
+    // 如果失敗，還原為原始主題名稱
+    if (topicIndex !== null) {
+      topics.value[topicIndex].title = originalTopic
+    }
+  }
+}
+
+async function generateTopicWithAI() {
+  if (!customAiPrompt.value.trim()) {
+    showNotification('請輸入 AI 發想的提示', 'warn');
+    return;
+  }
+
+  isGeneratingTopic.value = true
+  const originalPrompt = customAiPrompt.value
+
+  try {
+    // 1. 呼叫 AI 生成主題
+    const topicResp = await fetch(`${API_BASE_URL}/ai/generate_topics`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        meeting_title: originalPrompt,
+        topic_count: 1, // 每次只生成一個主題
+      })
+    })
+    if (!topicResp.ok) throw new Error("AI 主題生成失敗")
+    const topicData = await topicResp.json()
+    const generatedTopic = topicData.topics?.[0] || ''
+
+    // 2. 更新編輯中的主題名稱
+    editingTopicName.value = generatedTopic
+    editTopicTab.value = 'manual'; // 新增：AI 生成後切回手動頁籤以顯示結果
+
+    // 3. 自動儲存新主題
+    await saveTopicEdit()
+
+  } catch (err) {
+    showNotification(err.message, 'error')
+  } finally {
+    isGeneratingTopic.value = false
   }
 }
 
@@ -1916,14 +2055,41 @@ onBeforeUnmount(() => {
   border-radius: 0.5rem;
   border: 1px solid var(--border);
   font-size: 1rem;
-  margin-bottom: 1.25rem;
+  /* margin-bottom: 1.25rem; */ /* 移除此行，改由 .edit-topic-content 控制 */
   transition: all 0.2s;
 }
 
-.topic-edit-input:focus {
-  outline: none;
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+.edit-topic-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 1.5rem;
+}
+
+.edit-topic-tabs button {
+  background: none;
+  border: none;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  position: relative;
+  top: 1px;
+  border-bottom: 3px solid transparent;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.edit-topic-tabs button.active {
+  color: var(--primary-color);
+  font-weight: 600;
+  border-bottom-color: var(--primary-color);
+}
+
+.edit-topic-content {
+  min-height: 120px; /* 避免切換時跳動 */
+  margin-bottom: 1.5rem;
 }
 
 .topic-edit-actions {
@@ -1955,7 +2121,7 @@ onBeforeUnmount(() => {
 
 /* 媒體查詢適應小螢幕 */
 @media (max-width: 1024px) {
-  .host-layout {
+   .host-layout {
     grid-template-columns: 1fr;
     grid-template-rows: auto auto auto;
     height: auto;
@@ -2976,5 +3142,41 @@ input:checked + .slider:before {
 .form-actions .btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+</style>
+<style scoped>
+.ai-brainstorm-section {
+  display: flex;
+  flex-direction: column; /* 改為垂直排列 */
+  gap: 0.5rem; /* 調整間距 */
+  margin-bottom: 1.25rem;
+  padding: 1rem;
+  background-color: var(--surface);
+  border-radius: 0.75rem;
+  border: 1px solid var(--border);
+}
+
+.ai-brainstorm-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 0.25rem;
+}
+
+.ai-prompt-input {
+  flex-grow: 1;
+  width: 100%;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+  transition: all 0.2s;
+}
+
+.ai-prompt-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 </style>
