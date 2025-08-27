@@ -36,6 +36,10 @@ class RenameTopicRequest(BaseModel):
     old_topic: str
     new_topic: str
 
+class RoomSettingsRequest(BaseModel):
+    allowQuestions: bool
+    allowVoting: bool
+
 # --- Pydantic Models for older/specific APIs ---
 class RoomCreate(BaseModel):
     title: str
@@ -666,7 +670,8 @@ def get_room_state(room: str):
         "topic": current_topic,
         "countdown": left,
         "comments": current_comments,
-        "status": current_status
+        "status": current_status,
+        "settings": room_info.get("settings", {"allowQuestions": True, "allowVoting": True})
     }
 
 # 新增留言 (RESTful 風格)
@@ -678,6 +683,9 @@ def add_comment(room: str, data: CommentRequest):
     if room not in ROOMS:
         raise HTTPException(status_code=404, detail="Room not found")
     
+    if not ROOMS[room].get("settings", {}).get("allowQuestions", True):
+        raise HTTPException(status_code=403, detail="主持人已關閉新意見提交功能")
+
     current_topic = ROOMS[room]["current_topic"]
     if not current_topic:
         raise HTTPException(status_code=400, detail="No active topic in the room")
@@ -825,6 +833,9 @@ def vote_comment(room: str, comment_id: str, data: VoteRequest):
     if room not in ROOMS:
         raise HTTPException(status_code=404, detail="Room not found")
     
+    if not ROOMS[room].get("settings", {}).get("allowVoting", True):
+        raise HTTPException(status_code=403, detail="主持人已關閉投票功能")
+
     comment_found = any(
         c["id"] == comment_id 
         for t in topics.values() if t["room_id"] == room 
@@ -876,6 +887,9 @@ def remove_vote_comment(room: str, comment_id: str, data: VoteRequest):
     if room not in ROOMS:
         raise HTTPException(status_code=404, detail="Room not found")
         
+    if not ROOMS[room].get("settings", {}).get("allowVoting", True):
+        raise HTTPException(status_code=403, detail="主持人已關閉投票功能")
+
     if comment_id not in votes or device_id not in votes[comment_id][vote_type]:
         raise HTTPException(status_code=404, detail="Vote not found")
     
@@ -917,6 +931,20 @@ def get_user_votes(room: str, device_id: str):
                             voted_bad.append(comment_id)
     
     return {"voted_good": voted_good, "voted_bad": voted_bad}
+
+# 更新房間設定 (新增的端點)
+@router.put("/api/rooms/{room}/settings")
+def update_room_settings(room: str, new_settings: RoomSettingsRequest):
+    """
+    更新房間的問答與投票設定
+    """
+    if room not in ROOMS:
+        raise HTTPException(status_code=404, detail="Room not found")
+    
+    ROOMS[room]["settings"]["allowQuestions"] = new_settings.allowQuestions
+    ROOMS[room]["settings"]["allowVoting"] = new_settings.allowVoting
+    
+    return {"success": True, "settings": ROOMS[room]["settings"]}
 
 # 更新參與者暱稱 (RESTful 風格)
 

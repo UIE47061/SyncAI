@@ -1026,35 +1026,31 @@ function updateQRCodeSize() {
   qrcodeSize.value = Math.max(120, Math.min(280, Math.floor(window.innerWidth * 0.3)));
 }
 
-// 監聽設定變化自動寫回
-watch(settings, saveRoom, { deep: true })
+// 監聽設定變化並同步到後端
+watch(settings, async (newSettings) => {
+  if (!roomCode.value) return;
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/rooms/${roomCode.value}/settings`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newSettings)
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.detail || '更新設定失敗');
+    }
+    showNotification('問答設定已更新', 'success');
+  } catch (error) {
+    console.error('更新問答設定失敗:', error);
+    showNotification(error.message, 'error');
+    // 可選擇性地將設定還原
+  }
+}, { deep: true });
 
 // 監聽 allowJoin 狀態變化，自動呼叫 setRoomAllowJoin
 watch(allowJoin, (val) => {
   setRoomAllowJoin(val)
 })
-
-async function setRoomAllowJoin(allowed) {
-  try {
-    const res = await fetch(`${API_BASE_URL}/api/room_allow_join`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        room: roomCode.value,
-        allow_join: allowed
-      })
-    })
-    const data = await res.json()
-    if (!data.success) {
-      showNotification('設定允許加入失敗', 'error')
-    }
-  } catch (err) {
-    console.error(err)
-    showNotification('設定允許加入時發生錯誤', 'error')
-  }
-}
 
 // 房間資訊更新函數
 function startEditRoomInfo() {
@@ -1268,7 +1264,7 @@ async function generateAndReplaceTopic() {
     }
   } catch (error) {
     console.error('AI 主題生成與替換失敗:', error)
-    showNotification(error.message, 'error')
+    showNotification(error.message || 'AI 主題生成與替換失敗，請稍後再試', 'error')
     if (topicIndex !== null) {
       topics.value[topicIndex].title = originalTopic
     }
