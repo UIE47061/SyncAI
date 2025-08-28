@@ -51,24 +51,60 @@
                 </button>
               </div>
               
-              <!-- 主題編輯模式 -->
-              <div v-if="editingTopicIndex !== null" class="topic-edit-overlay">
+              <!-- 主題編輯/新增模式 -->
+              <div v-if="editingTopicIndex !== null || isAddingTopic" class="topic-edit-overlay">
                 <div class="topic-edit-container">
-                  <h3>編輯主題</h3>
-                  <input 
-                    ref="topicEditInput"
-                    v-model="editingTopicName" 
-                    @keyup.enter="saveTopicEdit" 
-                    @keyup.esc="cancelTopicEdit"
-                    class="topic-edit-input"
-                    placeholder="輸入主題名稱"
-                  />
-                  <div class="topic-edit-actions">
-                    <button @click="saveTopicEdit" class="btn btn-primary">
-                      <i class="fa-solid fa-check"></i> 保存
+                  <h3>{{ isAddingTopic ? '新增主題' : '編輯主題' }}</h3>
+                  
+                  <!-- 頁籤導覽 -->
+                  <div class="edit-topic-tabs">
+                    <button :class="{ active: editTopicTab === 'manual' }" @click="editTopicTab = 'manual'">
+                      <i class="fa-solid fa-keyboard"></i> 自行輸入
                     </button>
-                    <button @click="cancelTopicEdit" class="btn btn-outline">
-                      <i class="fa-solid fa-xmark"></i> 取消
+                    <button :class="{ active: editTopicTab === 'ai' }" @click="editTopicTab = 'ai'">
+                      <i class="fa-solid fa-lightbulb"></i> AI 發想
+                    </button>
+                  </div>
+
+                  <!-- 頁籤內容 -->
+                  <div class="edit-topic-content">
+                    <!-- 手動輸入 -->
+                    <div v-if="editTopicTab === 'manual'">
+                      <input 
+                        ref="topicEditInput"
+                        v-model="editingTopicName" 
+                        @keyup.enter="handleTopicModalConfirm" 
+                        @keyup.esc="cancelTopicModal"
+                        class="topic-edit-input"
+                        placeholder="輸入主題名稱"
+                      />
+                    </div>
+                    <!-- AI 發想 -->
+                    <div v-if="editTopicTab === 'ai'">
+                      <div class="ai-brainstorm-section">
+                        <label class="ai-brainstorm-label">請描述您希望 AI 發想的主題方向</label>
+                        <textarea
+                          v-model="customAiPrompt"
+                          class="ai-prompt-input"
+                          placeholder="例如：「一個關於提升團隊協作效率的創新方法」"
+                          rows="3"
+                        ></textarea>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="topic-edit-actions">
+                    <button 
+                      class="btn btn-primary" 
+                      @click="handleTopicModalConfirm" 
+                      :disabled="(editTopicTab === 'manual' && !editingTopicName.trim()) || (editTopicTab === 'ai' && !customAiPrompt.trim())"
+                    >
+                      <i :class="editTopicTab === 'ai' ? 'fa-solid fa-lightbulb' : 'fa-solid fa-check'"></i>
+                      {{ editTopicTab === 'ai' ? '產生' : (isAddingTopic ? '新增' : '儲存') }}
+                    </button>
+                    <button class="btn btn-outline" @click="cancelTopicModal">
+                      <i class="fa-solid fa-xmark"></i>
+                      取消
                     </button>
                   </div>
                 </div>
@@ -447,7 +483,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, watch, onBeforeUnmount } from 'vue'
+import { ref, reactive, computed, onMounted, watch, onBeforeUnmount, nextTick } from 'vue'
 import QrcodeVue from 'qrcode.vue'
 import { useRouter } from 'vue-router'
 
@@ -503,8 +539,13 @@ const topics = ref([
 ])
 const selectedTopicIndex = ref(0)
 const editingTopicIndex = ref(null)
+const isAddingTopic = ref(false) // 新增：控制新增主題彈窗
 const editingTopicName = ref('')
-
+const originalTopicNameToEdit = ref('') // 新增：儲存原始主題名稱
+const editTopicTab = ref('manual')
+const customAiPrompt = ref('')
+const isGeneratingTopic = ref(false)
+const topicSwipeState = ref({}); // { index: { startX, currentX, translateX, isDragging } }
 // 統計
 const totalVotes = computed(() => questions.value.reduce((sum, q) => sum + (q.vote_good || 0) + (q.vote_bad || 0), 0))
 
@@ -786,7 +827,7 @@ async function summaryAI() {
     // 解析回傳的 JSON 資料
     const data = await response.json();
 
-    // --- 4. 將總結結果貼回留言區 ---
+    // --- 4.將總結結果貼回留言區 ---
     if (data.summary) {
       // 使用新的 RESTful API
       await fetch(`${API_BASE_URL}/api/rooms/${roomCode.value}/comments`, {
@@ -985,35 +1026,31 @@ function updateQRCodeSize() {
   qrcodeSize.value = Math.max(120, Math.min(280, Math.floor(window.innerWidth * 0.3)));
 }
 
-// 監聽設定變化自動寫回
-watch(settings, saveRoom, { deep: true })
+// 監聽設定變化並同步到後端
+watch(settings, async (newSettings) => {
+  if (!roomCode.value) return;
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/rooms/${roomCode.value}/settings`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newSettings)
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.detail || '更新設定失敗');
+    }
+    showNotification('問答設定已更新', 'success');
+  } catch (error) {
+    console.error('更新問答設定失敗:', error);
+    showNotification(error.message, 'error');
+    // 可選擇性地將設定還原
+  }
+}, { deep: true });
 
 // 監聽 allowJoin 狀態變化，自動呼叫 setRoomAllowJoin
 watch(allowJoin, (val) => {
   setRoomAllowJoin(val)
 })
-
-async function setRoomAllowJoin(allowed) {
-  try {
-    const res = await fetch(`${API_BASE_URL}/api/room_allow_join`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        room: roomCode.value,
-        allow_join: allowed
-      })
-    })
-    const data = await res.json()
-    if (!data.success) {
-      showNotification('設定允許加入失敗', 'error')
-    }
-  } catch (err) {
-    console.error(err)
-    showNotification('設定允許加入時發生錯誤', 'error')
-  }
-}
 
 // 房間資訊更新函數
 function startEditRoomInfo() {
@@ -1086,14 +1123,10 @@ function toggleSidebar() {
 
 async function selectTopic(index) {
   selectedTopicIndex.value = index
-  
-  // 使用新的切換主題API
   const currentTopic = topics.value[index].title
   try {
-    // 直接呼叫新的 RESTful API
     const success = await switchTopic(currentTopic)
     if (success) {
-      // 切換成功後，立即獲取新主題的評論
       await fetchQuestions()
     }
   } catch (error) {
@@ -1102,97 +1135,217 @@ async function selectTopic(index) {
 }
 
 function startEditTopic(index) {
+  isAddingTopic.value = false;
   editingTopicIndex.value = index
   editingTopicName.value = topics.value[index].title
-  // 在下一個 DOM 更新循環後聚焦到輸入框
-  setTimeout(() => {
-    if (editingTopicIndex.value !== null && document.querySelector('.topic-edit-input')) {
-      document.querySelector('.topic-edit-input').focus()
-    }
-  }, 50)
+  originalTopicNameToEdit.value = topics.value[index].title
+  editTopicTab.value = 'manual'
+  nextTick(() => {
+    document.querySelector('.topic-edit-input')?.focus();
+  });
 }
 
 async function saveTopicEdit() {
-  if (editingTopicIndex.value !== null && editingTopicName.value.trim()) {
-    const oldTopicName = topics.value[editingTopicIndex.value].title
-    const newTopicName = editingTopicName.value.trim()
+  if (editingTopicIndex.value === null) return;
+
+  const oldTopicName = originalTopicNameToEdit.value
+  const newTopicName = editingTopicName.value.trim()
+  
+  if (!newTopicName || oldTopicName === newTopicName) {
+    cancelTopicModal();
+    return
+  }
+  
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/rooms/${roomCode.value}/topics/rename`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ old_topic: oldTopicName, new_topic: newTopicName })
+    })
     
-    // 如果名稱沒有改變，直接退出編輯模式
-    if (oldTopicName === newTopicName) {
-      editingTopicIndex.value = null
-      editingTopicName.value = ''
-      return
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.detail || `HTTP error! Status: ${response.status}`)
     }
     
-    try {
-      // 使用新的 rename_topic RESTful API
-      const response = await fetch(`${API_BASE_URL}/api/rooms/${roomCode.value}/topics/rename`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          old_topic: oldTopicName,
-          new_topic: newTopicName
-        })
-      })
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.detail || `HTTP error! Status: ${response.status}`)
-      }
-      
-      const result = await response.json()
-      
-      if (result.success) {
-        // 更新本地主題列表
-        topics.value[editingTopicIndex.value].title = newTopicName
-        saveTopics()
-        
-        // 如果重命名的是當前主題，刷新意見列表
-        if (result.is_current_topic) {
-          await fetchQuestions()
-        }
-        
-        showNotification(`主題已重新命名為「${newTopicName}」`, 'success')
-      } else {
-        showNotification(result.detail || '重新命名主題失敗', 'error')
-        return
-      }
-    } catch (error) {
-      console.error('重新命名主題失敗:', error)
-      showNotification(error.message || '重新命名主題失敗，請稍後再試', 'error')
-      return
-    }
+    const result = await response.json()
     
-    editingTopicIndex.value = null
-    editingTopicName.value = ''
+    if (result.success) {
+      topics.value[editingTopicIndex.value].title = newTopicName
+      if (result.is_current_topic) {
+        await fetchQuestions()
+      }
+      showNotification(`主題已重新命名為「${newTopicName}」`, 'success')
+    } else {
+      showNotification(result.detail || '重新命名主題失敗', 'error')
+    }
+  } catch (error) {
+    console.error('重新命名主題失敗:', error)
+    showNotification(error.message || '重新命名主題失敗，請稍後再試', 'error')
+  } finally {
+    cancelTopicModal();
   }
 }
 
-function cancelTopicEdit() {
+function cancelTopicModal() {
   editingTopicIndex.value = null
+  isAddingTopic.value = false;
   editingTopicName.value = ''
+  customAiPrompt.value = ''
+  originalTopicNameToEdit.value = ''
+  editTopicTab.value = 'manual'
 }
 
-async function addNewTopic() {
-  const newTopicTitle = `主題 ${topics.value.length + 1}`
+async function handleTopicModalConfirm() {
+  if (isAddingTopic.value) {
+    if (editTopicTab.value === 'manual') {
+      await createNewTopicManual();
+    } else {
+      await createNewTopicWithAI();
+    }
+  } else {
+    if (editTopicTab.value === 'manual') {
+      await saveTopicEdit();
+    } else {
+      await generateAndReplaceTopic();
+    }
+  }
+}
+
+async function generateAndReplaceTopic() {
+  if (!customAiPrompt.value.trim()) {
+    showNotification('請輸入 AI 發想的提示', 'warn')
+    return
+  }
+
+  const topicIndex = editingTopicIndex.value
+  const originalTopic = originalTopicNameToEdit.value
+  const prompt = customAiPrompt.value
+
+  cancelTopicModal()
+  if (topicIndex !== null) {
+    topics.value[topicIndex].title = 'AI 產生中...'
+  }
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/ai/generate_single_topic`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ room: roomCode.value, custom_prompt: prompt }),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.detail || `HTTP error! Status: ${response.status}`)
+    }
+
+    const result = await response.json()
+    if (!result.topic) throw new Error('AI 未能生成主題')
+    
+    const newTopicName = result.topic
+
+    const renameResponse = await fetch(`${API_BASE_URL}/api/rooms/${roomCode.value}/topics/rename`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ old_topic: originalTopic, new_topic: newTopicName }),
+    })
+
+    if (!renameResponse.ok) {
+      const errorData = await renameResponse.json().catch(() => ({}))
+      throw new Error(errorData.detail || `HTTP error! Status: ${renameResponse.status}`)
+    }
+
+    const renameResult = await renameResponse.json()
+    if (renameResult.success) {
+      topics.value[topicIndex].title = newTopicName
+      showNotification(`AI 已生成新主題：「${newTopicName}」`, 'success')
+    } else {
+      throw new Error(renameResult.detail || '重命名主題失敗')
+    }
+  } catch (error) {
+    console.error('AI 主題生成與替換失敗:', error)
+    showNotification(error.message || 'AI 主題生成與替換失敗，請稍後再試', 'error')
+    if (topicIndex !== null) {
+      topics.value[topicIndex].title = originalTopic
+    }
+  }
+}
+
+function addNewTopic() {
+  isAddingTopic.value = true;
+  editingTopicIndex.value = null;
+  editingTopicName.value = '';
+  customAiPrompt.value = '';
+  editTopicTab.value = 'manual';
+  nextTick(() => {
+    document.querySelector('.topic-edit-input')?.focus();
+  });
+}
+
+async function createNewTopicManual() {
+  const newTopicName = editingTopicName.value.trim();
+  if (!newTopicName) {
+    showNotification('主題名稱不能為空', 'warn');
+    return;
+  }
+  if (topics.value.some(t => t.title === newTopicName)) {
+    showNotification('該主題名稱已存在', 'error');
+    return;
+  }
+
   topics.value.push({
-    title: newTopicTitle,
+    title: newTopicName,
     content: '',
     timestamp: new Date().toISOString()
-  })
-  // 選擇新添加的主題
-  const newIndex = topics.value.length - 1
-  selectedTopicIndex.value = newIndex
-  saveTopics()
+  });
   
-  // 自動切換到新主題
+  cancelTopicModal();
+
   try {
-    await switchTopic(newTopicTitle)
-    await fetchQuestions()
+    const newIndex = topics.value.length - 1;
+    await selectTopic(newIndex);
   } catch (error) {
-    console.error("切換到新主題時出錯:", error)
+    console.error("切換到新主題時出錯:", error);
+  }
+}
+
+async function createNewTopicWithAI() {
+  if (!customAiPrompt.value.trim()) {
+    showNotification('請輸入 AI 發想的提示', 'warn');
+    return;
+  }
+  const prompt = customAiPrompt.value;
+
+  const placeholderIndex = topics.value.length;
+  topics.value.push({
+    title: 'AI 產生中...',
+    content: '',
+    timestamp: new Date().toISOString(),
+  });
+  cancelTopicModal();
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/ai/generate_single_topic`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ room: roomCode.value, custom_prompt: prompt }),
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.detail || `HTTP error! Status: ${response.status}`);
+    }
+    const result = await response.json();
+    if (!result.topic) throw new Error('AI 未能生成主題');
+    
+    const newTopicName = result.topic;
+    topics.value[placeholderIndex].title = newTopicName;
+    await selectTopic(placeholderIndex);
+    showNotification(`AI 已生成新主題：「${newTopicName}」`, 'success');
+
+  } catch (error) {
+    console.error('AI 新增主題失敗:', error);
+    showNotification(error.message, 'error');
+    topics.value.splice(placeholderIndex, 1);
   }
 }
 
@@ -1916,14 +2069,41 @@ onBeforeUnmount(() => {
   border-radius: 0.5rem;
   border: 1px solid var(--border);
   font-size: 1rem;
-  margin-bottom: 1.25rem;
+  /* margin-bottom: 1.25rem; */ /* 移除此行，改由 .edit-topic-content 控制 */
   transition: all 0.2s;
 }
 
-.topic-edit-input:focus {
-  outline: none;
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+.edit-topic-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 1.5rem;
+}
+
+.edit-topic-tabs button {
+  background: none;
+  border: none;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  position: relative;
+  top: 1px;
+  border-bottom: 3px solid transparent;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.edit-topic-tabs button.active {
+  color: var(--primary-color);
+  font-weight: 600;
+  border-bottom-color: var(--primary-color);
+}
+
+.edit-topic-content {
+  min-height: 120px; /* 避免切換時跳動 */
+  margin-bottom: 1.5rem;
 }
 
 .topic-edit-actions {
@@ -1955,7 +2135,7 @@ onBeforeUnmount(() => {
 
 /* 媒體查詢適應小螢幕 */
 @media (max-width: 1024px) {
-  .host-layout {
+   .host-layout {
     grid-template-columns: 1fr;
     grid-template-rows: auto auto auto;
     height: auto;
@@ -2976,5 +3156,41 @@ input:checked + .slider:before {
 .form-actions .btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+</style>
+<style scoped>
+.ai-brainstorm-section {
+  display: flex;
+  flex-direction: column; /* 改為垂直排列 */
+  gap: 0.5rem; /* 調整間距 */
+  margin-bottom: 1.25rem;
+  padding: 1rem;
+  background-color: var(--surface);
+  border-radius: 0.75rem;
+  border: 1px solid var(--border);
+}
+
+.ai-brainstorm-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 0.25rem;
+}
+
+.ai-prompt-input {
+  flex-grow: 1;
+  width: 100%;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+  transition: all 0.2s;
+}
+
+.ai-prompt-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 </style>
