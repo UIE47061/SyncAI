@@ -18,7 +18,7 @@ RUN pip install --no-cache-dir -r requirement.txt
 
 # 複製應用程式碼
 COPY backend/ ./backend/
-COPY ai_models/ ./ai_models/
+# 注意：ai_models 目錄將通過 volume 掛載，不需要 COPY
 
 # 暴露端口
 EXPOSE 8000

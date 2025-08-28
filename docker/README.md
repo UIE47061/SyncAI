@@ -1,66 +1,121 @@
-# Docker 配置檔案
+# SyncAI Docker 使用指南
 
-這個資料夾包含所有 SyncAI 專案的 Docker 相關配置檔案。
+## 🚀 快速開始
 
-## 📁 檔案說明
+### 開發環境
+開發環境支援熱重載，修改代碼會自動更新。
+```bash
+# 啟動開發環境 (熱重載)
+docker-compose -f docker/docker-compose.dev.yml up -d
 
-- `docker-compose.yml` - 生產環境 Docker Compose 配置
-- `docker-compose.dev.yml` - 開發環境 Docker Compose 配置
-- `Dockerfile.backend` - 後端 Python FastAPI 應用的 Dockerfile
-- `Dockerfile.frontend` - 前端 Vue.js 生產環境的 Dockerfile
-- `Dockerfile.frontend.dev` - 前端 Vue.js 開發環境的 Dockerfile
-- `nginx.conf` - Nginx 伺服器配置檔案
-- `.dockerignore` - Docker 構建時忽略的檔案清單
+# 查看日誌
+docker-compose -f docker/docker-compose.dev.yml logs -f
 
-## 🚀 使用方法
+# 停止
+docker-compose -f docker/docker-compose.dev.yml down
+```
 
 ### 生產環境
-
 ```bash
-# 從專案根目錄執行
+# 啟動生產環境
 docker-compose -f docker/docker-compose.yml up -d
-
-# 查看狀態
-docker-compose -f docker/docker-compose.yml ps
 
 # 查看日誌
 docker-compose -f docker/docker-compose.yml logs -f
 
-# 停止服務
+# 停止
 docker-compose -f docker/docker-compose.yml down
+
+# 更新代碼時使用
+docker-compose -f docker/docker-compose.yml up -d --build
 ```
 
-### 開發環境
+## 🌐 區域網路訪問
+
+### 查詢您的 IP 地址
+```bash
+# macOS/Linux
+ifconfig | grep "inet " | grep -v 127.0.0.1
+
+# Windows (命令提示字元)
+ipconfig | findstr "IPv4"
+
+# 會顯示類似：	
+#      inet 192.168.0.114 netmask 0xffffff00 broadcast 192.168.100.255  (macOS/Linux)
+#      IPv4 地址 . . . . . . . . . . . . : 192.168.0.114                (Windows)
+# 則 192.168.0.114 就會是您的IP位址！
+```
+
+### 區域網路訪問地址
+將 `192.168.0.114` 替換為您的實際 IP：
+
+**開發環境：**
+- 前端：`http://[您的IP地址]:5173`
+- 後端：`http://[您的IP地址]:8001`
+
+**生產環境：**
+- 前端：`http://[您的IP地址]`
+- 後端：`http://[您的IP地址]:8000`
+
+## 🛠️ 常用命令
 
 ```bash
-# 從專案根目錄執行
-docker-compose -f docker/docker-compose.dev.yml up -d
+# 查看運行的容器
+docker ps
 
-# 查看狀態
-docker-compose -f docker/docker-compose.dev.yml ps
+# 查看所有容器（包括停止的）
+docker ps -a
 
-# 停止服務
-docker-compose -f docker/docker-compose.dev.yml down
+# 查看特定服務日誌
+docker-compose -f docker/docker-compose.dev.yml logs backend
+docker-compose -f docker/docker-compose.dev.yml logs frontend
+
+# 重啟特定服務
+docker-compose -f docker/docker-compose.dev.yml restart backend
+docker-compose -f docker/docker-compose.dev.yml restart frontend
+
+# 一鍵清理：停止容器、刪除容器、刪除映像、刪除 volumes
+docker-compose -f docker/docker-compose.dev.yml down --rmi all --volumes
+docker-compose -f docker/docker-compose.yml down --rmi all --volumes
+
+# 完全清理（包括未使用的 volumes）
+docker-compose -f docker/docker-compose.dev.yml down --rmi all --volumes --remove-orphans
+docker-compose -f docker/docker-compose.yml down --rmi all --volumes --remove-orphans
+
+# 刪除未使用的 build cache
+docker builder prune
+
+# 系統清理（刪除未使用的映像、容器、網路等）
+docker system prune
+docker system prune -a  # 更徹底的清理
 ```
 
 ## 📝 注意事項
 
-- 所有命令都需要從專案根目錄執行
-- 確保 `ai_models/` 資料夾存在且包含必要的模型檔案
-- 後端映像較大（約 11GB），主要因為包含 AI 模型檔案
+1. **首次啟動**：初次下載和構建可能需要較長時間，特別是 AI 模型檔案較大
+2. **記憶體需求**：確保 Docker 有足夠記憶體來載入 AI 模型（建議 8GB+）
+3. **端口衝突**：確保端口 80、5173、8000、8001 沒有被其他服務占用
+4. **IP 變化**：前端會自動偵測並連接到正確的後端端口，無需手動配置
+5. **熱重載**：開發環境的前後端都支援熱重載，修改代碼會自動生效
 
-## 🔄 更新
+## 🔧 故障排除
 
-當修改代碼後，需要重新構建映像：
-
+### 容器無法啟動
 ```bash
-# 生產環境更新
-docker-compose -f docker/docker-compose.yml down
-docker-compose -f docker/docker-compose.yml build --no-cache
-docker-compose -f docker/docker-compose.yml up -d
+# 檢查端口是否被占用
+lsof -i :80
+lsof -i :8000
 
-# 開發環境更新
-docker-compose -f docker/docker-compose.dev.yml down
-docker-compose -f docker/docker-compose.dev.yml build --no-cache
-docker-compose -f docker/docker-compose.dev.yml up -d
+# 查看詳細錯誤
+docker-compose -f docker/docker-compose.dev.yml logs
 ```
+
+### 無法從其他設備訪問
+1. 確保所有設備連接到相同的 WiFi 網路
+2. 檢查「防火牆」設定
+3. 確認 IP 地址是否正確
+
+### AI 模型載入失敗
+1. 確認 `ai_models/` 資料夾中有模型檔案
+2. 檢查 Docker 記憶體限制
+3. 查看後端啟動日誌

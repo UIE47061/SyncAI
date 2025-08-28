@@ -9,6 +9,8 @@ services:
       - "0.0.0.0:8000:8000"
     environment:
       - PYTHONPATH=/app
+    volumes:
+      - ../ai_models:/app/ai_models:ro  # 將本地模型目錄掛載到容器中（唯讀）
     restart: unless-stopped
     networks:
       - syncai-network
