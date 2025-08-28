@@ -67,14 +67,26 @@ curl -L -o mistral-7b-instruct-v0.2.Q5_K_M.gguf https://huggingface.co/TheBloke/
 ```
 
 #### 驗證下載
+
+**macOS/Linux：**
 ```bash
 # 檢查檔案是否存在且大小正確（約 5.1GB）
 ls -lh ai_models/mistral-7b-instruct-v0.2.Q5_K_M.gguf
+
+# 應該看到類似輸出：
+# -rw-r--r-- 1 user staff 4.8G Aug 28 22:50 ai_models/mistral-7b-instruct-v0.2.Q5_K_M.gguf
 ```
 
-應該看到類似輸出：
-```
--rw-r--r-- 1 user staff 4.8G Aug 28 22:50 ai_models/mistral-7b-instruct-v0.2.Q5_K_M.gguf
+**Windows：**
+```bash
+# 檢查檔案是否存在且大小正確（約 5.1GB）
+dir ai_models\mistral-7b-instruct-v0.2.Q5_K_M.gguf
+
+# 或使用 PowerShell
+Get-ChildItem ai_models\mistral-7b-instruct-v0.2.Q5_K_M.gguf -Force
+
+# 應該看到類似輸出：
+# 2024/08/28  22:50    5,131,409,696 mistral-7b-instruct-v0.2.Q5_K_M.gguf
 ```
 
 ### 3. 選擇部署方式
@@ -102,8 +114,8 @@ docker-compose -f docker/docker-compose.dev.yml logs -f
 docker-compose -f docker/docker-compose.dev.yml down
 ```
 **訪問地址**：
-- 前端：`http://[您的IP地址]`
-- 後端：`http://[您的IP地址]:8000`
+- 前端：`http://[您的IP地址]:5173`
+- 後端：`http://[您的IP地址]:8001`
 
 ### 生產環境
 ```bash
@@ -117,8 +129,8 @@ docker-compose -f docker/docker-compose.yml logs -f
 docker-compose -f docker/docker-compose.yml down
 ```
 **訪問地址**：
-- 前端：`http://[您的IP地址]:5173`
-- 後端：`http://[您的IP地址]:8001`
+- 前端：`http://[您的IP地址]`
+- 後端：`http://[您的IP地址]:8000`
 
 ### 查詢您的 IP 地址
    ```bash
