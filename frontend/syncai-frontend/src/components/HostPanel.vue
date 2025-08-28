@@ -494,9 +494,7 @@ function removeParticipant(index) {
   showNotification('已移除成員', 'info')
 }
 
-
-// API 基礎 URL 設定
-const API_BASE_URL = `${window.location.protocol}//${window.location.hostname}:8000`  // 根據實際後端服務的地址和端口進行調整
+import { API_BASE_URL } from '@/utils/api'
 
 // 狀態
 const room = ref(null)
