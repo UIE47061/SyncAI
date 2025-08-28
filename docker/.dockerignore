@@ -1,0 +1,41 @@
+# Docker 相關檔案
+.dockerignore
+Dockerfile*
+docker-compose*
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# 日誌
+*.log
+
+# 暫存檔案
+*.tmp
+*.temp

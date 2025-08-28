@@ -1,0 +1,40 @@
+# 開發環境的 Docker Compose
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.backend
+    image: syncai/backend:latest
+    container_name: syncai-backend-dev
+    ports:
+      - "0.0.0.0:8001:8000"
+    volumes:
+      - ../backend:/app/backend
+      - ../ai_models:/app/ai_models
+    environment:
+      - PYTHONPATH=/app
+    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+    restart: unless-stopped
+    networks:
+      - syncai-network
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.frontend.dev
+    image: syncai/frontend:dev
+    container_name: syncai-frontend-dev
+    ports:
+      - "0.0.0.0:5173:5173"
+    volumes:
+      - ../frontend/syncai-frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - syncai-network
+
+networks:
+  syncai-network:
+    driver: bridge

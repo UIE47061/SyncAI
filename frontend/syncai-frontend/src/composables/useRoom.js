@@ -1,7 +1,6 @@
 import { ref, onMounted, onBeforeUnmount, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-
-const API_BASE_URL = `${window.location.protocol}//${window.location.hostname}:8000`;
+import { API_BASE_URL } from '@/utils/api';
 
 export function useRoom() {
   const route = useRoute();

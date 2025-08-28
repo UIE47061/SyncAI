@@ -1,0 +1,41 @@
+# 前端 Dockerfile - 多階段構建
+# 第一階段：構建應用
+FROM node:20-alpine as builder
+
+# 設定工作目錄
+WORKDIR /app
+
+# 安裝必要的系統依賴
+RUN apk add --no-cache git python3 make g++
+
+# 複製 package.json 和 package-lock.json (如果存在)
+COPY frontend/syncai-frontend/package*.json ./
+
+# 設定 npm 配置並安裝依賴
+RUN npm config set legacy-peer-deps true && \
+    npm install
+
+# 複製應用程式碼
+COPY frontend/syncai-frontend/ .
+
+# 構建應用
+RUN npm run build
+
+# 第二階段：生產環境
+FROM nginx:alpine
+
+# 複製構建結果
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# 複製 nginx 配置
+COPY docker/nginx.conf /etc/nginx/nginx.conf
+
+# 創建 nginx 用戶和設定權限
+RUN chown -R nginx:nginx /usr/share/nginx/html && \
+    chmod -R 755 /usr/share/nginx/html
+
+# 暴露端口
+EXPOSE 80
+
+# 啟動 nginx
+CMD ["nginx", "-g", "daemon off;"]

@@ -73,9 +73,8 @@ const emit = defineEmits(['close', 'show-notification', 'join-success']);
 const router = useRouter();
 
 // --- API 位址 ---
-const API_BASE = window.location.hostname === 'localhost'
-  ? 'http://localhost:8000'
-  : `http://${window.location.hostname}:8000`;
+import { API_BASE_URL } from '@/utils/api';
+const API_BASE = API_BASE_URL;
 
 const rooms = ref([]);
 const selectedFilter = ref('all');
