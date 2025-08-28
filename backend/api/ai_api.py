@@ -1,8 +1,8 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
 from llama_cpp import Llama
-import random, string, time, json, re
-from typing import Union, List
+import json, re
+from typing import List
 from .participants_api import ROOMS, topics, votes
 
 router = APIRouter(prefix="/ai", tags=["AI"])
