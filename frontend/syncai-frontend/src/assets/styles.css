@@ -72,8 +72,8 @@ body {
 
 /* 全站品牌圖示（放在 public/icon.png） */
 .brand-icon {
-    width: 28px;
-    height: 28px;
+    width: 100px;
+    height: 100px;
     display: inline-block;
 }
 

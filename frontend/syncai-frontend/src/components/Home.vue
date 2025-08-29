@@ -5,8 +5,8 @@
       <div class="nav-container">
         <div class="nav-brand" @click="router.push('/')" aria-label="返回主頁">
           <img src="/icon.png" alt="MBBuddy" class="brand-icon" />
-          <h1>MBBuddy</h1>
-          <span>互動問答平台</span>
+          <!-- <h1>MBBuddy</h1> -->
+          <!-- <span>互動問答平台</span> -->
         </div>
         <div class="nav-actions">
           <button class="btn btn-outline" @click="showJoinModal = true">加入會議</button>
