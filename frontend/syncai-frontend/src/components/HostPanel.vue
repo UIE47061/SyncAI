@@ -137,6 +137,7 @@ import QRCodeModal from './QRCodeModal.vue'
 import TimerModal from './TimerModal.vue'
 import TopicEditModal from './TopicEditModal.vue'
 import MindMapModal from './MindMapModal.vue'
+import { BackgroundStyleTracker } from '@/utils/backgroundStyleTracker'
 
 // 控制面板 tab 狀態
 const controlTab = ref('control')
@@ -452,7 +453,7 @@ async function loadRoom() {
       router.push('/')
     }
   } catch (error) {
-    console.error('載入房間資訊時出錯:', error)
+    console.error('載入房間資訊時發生錯誤:', error)
     showNotification('載入房間資訊失敗', 'error')
   }
 }
@@ -733,6 +734,19 @@ async function endRoom() {
         saveRoom()
       }
       
+      // 🎯 背景風格追蹤 - 改為 async
+      try {
+        const meetingData = {
+          participants: participantsList.value,
+          questions: questions.value,
+          roomCode: roomCode.value,
+          title: room.value?.title
+        }
+        await BackgroundStyleTracker.trackMeeting(meetingData) // 加 await
+      } catch (styleError) {
+        console.warn('風格追蹤失敗，但會議正常結束:', styleError)
+      }
+      
       // 顯示結束通知
       showNotification('會議已結束，正在跳轉到結算頁面...', 'success')
       
@@ -745,7 +759,7 @@ async function endRoom() {
             title: room.value?.title || '未命名會議'
           }
         })
-      }, 1000) // 1秒後跳轉，讓用戶看到通知
+      }, 1000)
       
     } catch (error) {
       console.error('結束會議失敗:', error)
