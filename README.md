@@ -45,10 +45,10 @@ cd SyncAI
 #### 方法一：使用自動下載腳本（推薦）
 ```bash
 # macOS/Linux
-./download_model.sh
+scripts/download_model.sh
 
 # Windows
-download_model.bat
+scripts\download_model.bat
 ```
 
 #### 方法二：手動下載
@@ -66,34 +66,11 @@ curl -L -o mistral-7b-instruct-v0.2.Q5_K_M.gguf https://huggingface.co/TheBloke/
 # 下載 mistral-7b-instruct-v0.2.Q5_K_M.gguf 檔案
 ```
 
-#### 驗證下載
-
-**macOS/Linux：**
-```bash
-# 檢查檔案是否存在且大小正確（約 5.1GB）
-ls -lh ai_models/mistral-7b-instruct-v0.2.Q5_K_M.gguf
-
-# 應該看到類似輸出：
-# -rw-r--r-- 1 user staff 4.8G Aug 28 22:50 ai_models/mistral-7b-instruct-v0.2.Q5_K_M.gguf
-```
-
-**Windows：**
-```bash
-# 檢查檔案是否存在且大小正確（約 5.1GB）
-dir ai_models\mistral-7b-instruct-v0.2.Q5_K_M.gguf
-
-# 或使用 PowerShell
-Get-ChildItem ai_models\mistral-7b-instruct-v0.2.Q5_K_M.gguf -Force
-
-# 應該看到類似輸出：
-# 2024/08/28  22:50    5,131,409,696 mistral-7b-instruct-v0.2.Q5_K_M.gguf
-```
-
 ### 3. 選擇部署方式
 
-## 🚀 方法一：Docker 部署（推薦）
+#### 🚀 方法一：Docker 部署（推薦）
 
-### 先決條件
+##### 0. 先決條件
 1. 確保已安裝 Docker 和 Docker Compose
 2. **重要**：確保已完成上述「準備 AI 模型」步驟
 3. 驗證模型檔案存在：
@@ -102,22 +79,7 @@ Get-ChildItem ai_models\mistral-7b-instruct-v0.2.Q5_K_M.gguf -Force
    ```
    如果檔案不存在，請返回「準備 AI 模型」章節完成下載
 
-### 開發環境（支援熱重載）
-```bash
-# 啟動開發環境
-docker-compose -f docker/docker-compose.dev.yml up -d
-
-# 查看日誌
-docker-compose -f docker/docker-compose.dev.yml logs -f
-
-# 停止服務
-docker-compose -f docker/docker-compose.dev.yml down
-```
-**訪問地址**：
-- 前端：`http://[您的IP地址]:5173`
-- 後端：`http://[您的IP地址]:8001`
-
-### 生產環境
+##### 1. 啟動環境
 ```bash
 # 啟動生產環境
 docker-compose -f docker/docker-compose.yml up -d
@@ -128,87 +90,84 @@ docker-compose -f docker/docker-compose.yml logs -f
 # 停止服務
 docker-compose -f docker/docker-compose.yml down
 ```
-**訪問地址**：
+##### 2. 查詢您的 IP 地址
+   ```bash
+   # macOS/Linux
+   ifconfig | grep "inet " | grep -v 127.0.0.1
+
+   # Windows (命令提示字元)
+   ipconfig | findstr "IPv4"
+
+   # 會顯示類似：	
+   #      inet 192.168.0.114 netmask 0xffffff00 broadcast 192.168.100.255  (macOS/Linux)
+   #      IPv4 地址 . . . . . . . . . . . . : 192.168.0.114                (Windows)
+   # 則 192.168.0.114 就會是您的IP位址！
+   ```
+##### 3. 訪問地址
 - 前端：`http://[您的IP地址]`
 - 後端：`http://[您的IP地址]:8000`
 
-### 查詢您的 IP 地址
-   ```bash
-   # macOS/Linux
-   ifconfig | grep "inet " | grep -v 127.0.0.1
 
-   # Windows (命令提示字元)
-   ipconfig | findstr "IPv4"
+#### 🔧 方法二：本地開發模式
 
-   # 會顯示類似：	
-   #      inet 192.168.0.114 netmask 0xffffff00 broadcast 192.168.100.255  (macOS/Linux)
-   #      IPv4 地址 . . . . . . . . . . . . : 192.168.0.114                (Windows)
-   # 則 192.168.0.114 就會是您的IP位址！
-   ```
+##### 1. 一鍵設置開發環境
 
-## 🔧 方法二：本地開發模式
-
-### 安裝相依套件
-
-#### 後端相依套件
 ```bash
-# 建立虛擬環境
-python -m venv .venv
+# macOS/Linux - 設置開發環境（一次性執行）
+scripts/setup_dev.sh
 
-# 啟動虛擬環境
-# Windows:
-.venv\Scripts\activate
-# macOS/Linux:
-source .venv/bin/activate
-
-# 安裝相依套件
-pip install -r requirements.txt
+# Windows - 設置開發環境（一次性執行）
+scripts\setup_dev.bat
 ```
 
-**後端相依套件列表**：fastapi, uvicorn, pydantic, llama-cpp-python, reportlab
+此腳本會自動：
+   - 🐍 建立 Python 虛擬環境
+   - 📦 安裝後端相依套件 (`fastapi`, `uvicorn`, `pydantic`, `llama-cpp-python`, `reportlab`)
+   - 🎨 安裝前端相依套件 (`vue`, `vue-router`, `uuid`, `qrcode.vue`)
 
-#### 前端相依套件
+##### 2. 啟動開發服務
+
 ```bash
-# 進入前端目錄
-cd frontend/syncai-frontend
+# macOS/Linux - 啟動開發服務
+scripts/start_dev.sh
 
-# 安裝相依套件
-npm install
+# Windows - 啟動開發服務
+scripts\start_dev.bat
 ```
 
-**前端相依套件列表**：vue, vue-router, uuid, qrcode.vue
+此腳本會自動：
+- 🔧 啟動後端服務 (port 8001)
+- 🎨 啟動前端開發伺服器 (port 5173)
+- 📱 顯示訪問地址
 
-### 啟動服務
+##### 3. 查詢您的 IP 地址（區域網路訪問）
 
-1. **啟動後端服務**：
-   ```bash
-   # 在專案根目錄下執行
-   uvicorn backend.main:app --reload --host 0.0.0.0 --port 8001
-   ```
+```bash
+# macOS/Linux
+ifconfig | grep "inet " | grep -v 127.0.0.1
 
-2. **啟動前端開發伺服器**：
-   ```bash
-   # 在 frontend/syncai-frontend 目錄下執行
-   npm run dev
-   ```
+# Windows (命令提示字元)
+ipconfig | findstr "IPv4"
 
-3. **查詢您的 IP 地址**（區域網路訪問）：
-   ```bash
-   # macOS/Linux
-   ifconfig | grep "inet " | grep -v 127.0.0.1
-
-   # Windows (命令提示字元)
-   ipconfig | findstr "IPv4"
-
-   # 會顯示類似：	
-   #      inet 192.168.0.114 netmask 0xffffff00 broadcast 192.168.100.255  (macOS/Linux)
-   #      IPv4 地址 . . . . . . . . . . . . : 192.168.0.114                (Windows)
-   # 則 192.168.0.114 就會是您的IP位址！
-   ```
+# 會顯示類似：	
+#      inet 192.168.0.114 netmask 0xffffff00 broadcast 192.168.100.255  (macOS/Linux)
+#      IPv4 地址 . . . . . . . . . . . . : 192.168.0.114                (Windows)
+# 則 192.168.0.114 就會是您的IP位址！
+```
 
 **訪問地址**：
 - 前端：`http://[您的IP地址]:5173`
 - 後端：`http://[您的IP地址]:8001`
+
+##### 4. 停止開發服務
+
+```bash
+# macOS/Linux - 停止開發服務
+scripts/stop_dev.sh
+
+# Windows - 停止開發服務
+scripts\stop_dev.bat
+```
 
 ## 📱 使用流程
 
@@ -311,9 +270,16 @@ SyncAI/
 │   ├── requirement.txt             # Python 依賴清單
 │   └── test.py                     # 測試腳本
 │
-├── 📥 模型下載工具
+├── 📥 scripts/                      # 自動化腳本目錄
 │   ├── download_model.sh           # macOS/Linux 模型下載腳本
-│   └── download_model.bat          # Windows 模型下載腳本
+│   ├── download_model.bat          # Windows 模型下載腳本（英文）
+│   ├── download_model_cn.bat       # Windows 模型下載腳本（中文）
+│   ├── setup_dev.sh                # macOS/Linux 開發環境設置腳本
+│   ├── setup_dev.bat               # Windows 開發環境設置腳本
+│   ├── start_dev.sh                # macOS/Linux 開發服務啟動腳本
+│   ├── start_dev.bat               # Windows 開發服務啟動腳本
+│   ├── stop_dev.sh                 # macOS/Linux 開發服務停止腳本
+│   └── stop_dev.bat                # Windows 開發服務停止腳本
 │
 └── 📄 文檔
     ├── README.md                   # 專案說明文檔
@@ -331,6 +297,7 @@ SyncAI/
 | `frontend/src/components/` | Vue 組件，實現各種 UI 功能 |
 | `frontend/src/composables/useRoom.js` | 會議室狀態管理和 WebSocket 通訊 |
 | `docker/` | 容器化部署配置，支援開發和生產環境 |
+| `scripts/` | 自動化腳本目錄，包含模型下載和開發環境管理 |
 | `download_model.*` | 自動下載 AI 模型的便利腳本 |
 
 ## 🛡️ 隱私保障
@@ -375,17 +342,39 @@ chmod 644 ai_models/mistral-7b-instruct-v0.2.Q5_K_M.gguf
 ```
 
 #### 首次設定完整流程：
+
+**Docker 部署：**
 ```bash
 # 1. Clone 專案
 git clone https://github.com/UIE47061/SyncAI.git
 cd SyncAI
 
 # 2. 下載模型（必須步驟）
-./download_model.sh        # macOS/Linux
-# 或 download_model.bat     # Windows
+scripts/download_model.sh        # macOS/Linux
+# 或 scripts\download_model.bat  # Windows (英文)
+# 或 scripts\download_model_cn.bat # Windows (中文)
 
 # 3. 啟動 Docker
 docker-compose -f docker/docker-compose.yml up -d
+```
+
+**本地開發：**
+```bash
+# 1. Clone 專案
+git clone https://github.com/UIE47061/SyncAI.git
+cd SyncAI
+
+# 2. 下載模型
+scripts/download_model.sh        # macOS/Linux
+# 或 scripts\download_model.bat  # Windows
+
+# 3. 設置開發環境
+scripts/setup_dev.sh             # macOS/Linux
+# 或 scripts\setup_dev.bat       # Windows
+
+# 4. 啟動開發服務
+scripts/start_dev.sh             # macOS/Linux
+# 或 scripts\start_dev.bat       # Windows
 ```
 
 ### 檔案結構確認：
