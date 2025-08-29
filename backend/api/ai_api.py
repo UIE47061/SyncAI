@@ -320,3 +320,76 @@ def generate_ai_topics(req: GenerateTopicsRequest):
         # 處理呼叫 AI 時可能發生的任何錯誤
         print(f"Error calling LLM for topic generation: {e}")
         return {"topics": [f"抱歉，AI 服務暫時無法連線，請稍後再試。"]}
+
+# 新增的請求模型，用於 generate_single_topic 端點
+class GenerateSingleTopicRequest(BaseModel):
+    room: str
+    custom_prompt: str
+
+@router.post("/generate_single_topic")
+def generate_single_topic(req: GenerateSingleTopicRequest):
+    """
+    根據會議室和自訂提示，使用 AI 生成單一議程主題。
+
+    [POST] /ai/generate_single_topic
+
+    參數：
+    - room (str): 會議室代碼
+    - custom_prompt (str): 自訂的提示語句，用於引導 AI 生成主題
+
+    回傳：
+    - topic (str): AI 生成的主題字串
+    """
+    # 檢查會議室是否存在
+    if req.room not in ROOMS:
+        return {"topic": "錯誤：找不到指定的會議室。"}
+
+    room_data = ROOMS[req.room]
+
+    # --- 開始建立 Prompt ---
+    prompt = f"會議名稱: {room_data.get('title', '未命名會議')}\n"
+    prompt += f"會議代碼: {req.room}\n"
+    
+    # 添加會議描述/摘要（如果有）
+    if room_data.get('topic_summary'):
+        prompt += f"會議摘要: {room_data['topic_summary']}\n"
+    if room_data.get('desired_outcome'):
+        prompt += f"預期成果: {room_data['desired_outcome']}\n"
+    
+    # 取得參與者列表
+    participants = [p.get("nickname", "匿名") for p in room_data.get("participants_list", [])]
+    if participants:
+        prompt += f"參與者: {', '.join(participants)}\n"
+    
+    # 找出該會議室的所有已有主題
+    existing_topics = [
+        t["topic_name"] for t_id, t in topics.items() 
+        if t["room_id"] == req.room and "topic_name" in t
+    ]
+    
+    if existing_topics:
+        prompt += "\n已有的主題:\n"
+        for i, topic_name in enumerate(existing_topics, 1):
+            prompt += f"{i}. {topic_name}\n"
+        
+        prompt += "\n請生成一個與已有主題互補但不重複的新議程主題。主題應該既要與會議整體目標相關，又能夠覆蓋尚未討論的重要方面。"
+    else:
+        prompt += "\n目前會議尚未有任何主題。請生成一個適合作為第一個討論主題的議程。"
+
+    # 加上使用者自訂的提示
+    if req.custom_prompt:
+        prompt += f"\n\n自訂提示: {req.custom_prompt}"
+    
+    prompt += "\n\n請直接返回一個簡潔、具體且不超過10個字的主題，不需要任何前綴或解釋。"
+
+    # 呼叫 AI 模型
+    output = llm(
+        prompt,
+        max_tokens=64,
+        stop=["</s>"],
+        echo=False,
+        temperature=0.8,
+    )
+    
+    topic = output["choices"][0]["text"].strip()
+    return {"topic": topic}

@@ -1,0 +1,17 @@
+# 開發環境前端 Dockerfile
+FROM node:20-alpine
+
+# 設定工作目錄
+WORKDIR /app
+
+# 複製 package.json 和 package-lock.json (如果存在)
+COPY frontend/syncai-frontend/package*.json ./
+
+# 安裝依賴
+RUN npm install
+
+# 暴露端口
+EXPOSE 5173
+
+# 啟動開發服務器
+CMD ["npm", "run", "dev"]

@@ -18,6 +18,8 @@ pip-wheel-metadata/
 
 # ai_models
 ai_models/*.gguf
+!download_model.sh
+!download_model.bat
 
 # VSCode
 .vscode/
