@@ -83,6 +83,7 @@
 
 <script setup>
 import { ref, watch } from 'vue'
+import { API_BASE_URL } from '@/utils/api';
 
 const props = defineProps({
   show: {
@@ -142,8 +143,7 @@ async function generateMindMap() {
   mindMapUrl.value = ''
   
   try {
-    // 使用相對URL，讓Vite代理處理
-    const response = await fetch('/api/mindmap/generate', {
+    const response = await fetch(`${API_BASE_URL}/api/mindmap/generate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
