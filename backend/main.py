@@ -4,6 +4,7 @@ from backend.api import ai_api
 from fastapi.middleware.cors import CORSMiddleware
 from backend.api import participants_api
 from backend.api import network_api
+from backend.api import mindmap_api as mindmap_api
 
 app = FastAPI(title="MBBuddy API")
 
@@ -18,6 +19,7 @@ app.add_middleware(
 app.include_router(participants_api.router)
 app.include_router(ai_api.router)
 app.include_router(network_api.router)
+app.include_router(mindmap_api.router)
 
 if __name__ == "__main__":
     import uvicorn

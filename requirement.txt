@@ -3,4 +3,7 @@ uvicorn
 pydantic
 httpx
 reportlab
-httpx
+matplotlib
+networkx
+pillow
+numpy

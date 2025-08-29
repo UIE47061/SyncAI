@@ -36,7 +36,11 @@
       </div>
       <!-- 匯出全部單獨置底 -->
       <div class="sidebar-bottom">
-        <button class="btn btn-outline btn-sm" @click="exportAllTopics" style="width: 90%; margin: 1.5rem auto 0 auto;">
+        <button class="btn btn-success btn-sm" @click="generateMindMap" style="width: 90%; margin: 1.5rem auto 0.5rem auto;">
+          <i class="fa-solid fa-brain"></i>
+          <span>AI心智圖</span>
+        </button>
+        <button class="btn btn-outline btn-sm" @click="exportAllTopics" style="width: 90%; margin: 0 auto 0 auto;">
           <i class="fa-solid fa-download"></i>
           <span>匯出全部</span>
         </button>
@@ -68,7 +72,8 @@ const emit = defineEmits([
   'select-topic', 
   'edit-topic', 
   'add-new-topic', 
-  'export-all-topics'
+  'export-all-topics',
+  'generate-mind-map'
 ])
 
 function toggleSidebar() {
@@ -89,6 +94,10 @@ function addNewTopic() {
 
 function exportAllTopics() {
   emit('export-all-topics')
+}
+
+function generateMindMap() {
+  emit('generate-mind-map')
 }
 </script>
 
@@ -312,6 +321,15 @@ function exportAllTopics() {
 .btn-outline:hover {
   background: var(--surface);
   color: var(--text-primary);
+}
+
+.btn-success {
+  background: #28a745;
+  color: white;
+}
+
+.btn-success:hover {
+  background: #218838;
 }
 
 /* 響應式調整 */
