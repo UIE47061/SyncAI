@@ -644,3 +644,100 @@ async def generate_single_topic(req: GenerateSingleTopicRequest):
         raise
     except Exception as e:
         return {"topic": f"AI 主題生成失敗: {str(e)}"}
+
+
+# 新增的請求模型，用於清理臨時主題
+class CleanTempTopicsRequest(BaseModel):
+    room: str
+
+@router.post("/clean_temp_topics")
+async def clean_temp_topics(req: CleanTempTopicsRequest):
+    """
+    清理指定會議室中的臨時主題（載入狀態和錯誤訊息主題）
+
+    [POST] /ai/clean_temp_topics
+
+    參數：
+    - room (str): 會議室代碼
+
+    回傳：
+    - success (bool): 操作是否成功
+    - cleaned_topics (list): 被清理的主題列表
+    - detail (str): 操作詳情
+    """
+    # 檢查會議室是否存在
+    if req.room not in ROOMS:
+        return {"success": False, "detail": "錯誤：找不到指定的會議室。"}
+
+    room_data = ROOMS[req.room]
+    cleaned_topics = []
+    
+    # 定義需要清理的臨時主題關鍵字
+    temp_topic_patterns = [
+        "AI 主題生成中",
+        "AI 產生中",
+        "AI 服務暫時無法連線",
+        "AI 未能生成任何主題",
+        "AI 主題生成失敗",
+        "錯誤：",
+        "載入中",
+        "生成中"
+    ]
+    
+    try:
+        # 找出該會議室的所有臨時主題
+        topics_to_clean = []
+        for topic_id, topic_data in list(topics.items()):
+            if topic_data.get("room_id") == req.room and "topic_name" in topic_data:
+                topic_name = topic_data["topic_name"]
+                # 檢查是否為臨時主題
+                for pattern in temp_topic_patterns:
+                    if pattern in topic_name:
+                        topics_to_clean.append((topic_id, topic_name))
+                        break
+        
+        # 執行清理
+        for topic_id, topic_name in topics_to_clean:
+            try:
+                # 收集要刪除的留言ID
+                comments_in_topic = topics[topic_id].get("comments", [])
+                comment_ids_to_delete = [c.get("id") for c in comments_in_topic if c.get("id")]
+                
+                # 刪除相關的投票
+                for comment_id in comment_ids_to_delete:
+                    if comment_id in votes:
+                        del votes[comment_id]
+                
+                # 刪除主題本身
+                del topics[topic_id]
+                cleaned_topics.append(topic_name)
+                
+                # 如果被刪除的是當前主題，則更新房間的當前主題
+                if room_data.get("current_topic") == topic_name:
+                    # 尋找一個新的主題來設定為當前主題
+                    remaining_topics = [t['topic_name'] for t_id, t in topics.items() if t.get("room_id") == req.room]
+                    room_data["current_topic"] = remaining_topics[0] if remaining_topics else None
+                    
+            except Exception as e:
+                print(f"清理主題 {topic_name} 時發生錯誤: {e}")
+                continue
+        
+        if cleaned_topics:
+            return {
+                "success": True,
+                "cleaned_topics": cleaned_topics,
+                "detail": f"成功清理了 {len(cleaned_topics)} 個臨時主題"
+            }
+        else:
+            return {
+                "success": True,
+                "cleaned_topics": [],
+                "detail": "沒有找到需要清理的臨時主題"
+            }
+            
+    except Exception as e:
+        print(f"清理臨時主題時發生錯誤: {e}")
+        return {
+            "success": False,
+            "detail": f"清理臨時主題失敗: {str(e)}"
+        }

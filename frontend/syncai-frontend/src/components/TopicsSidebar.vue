@@ -50,8 +50,6 @@
 </template>
 
 <script setup>
-// defineProps 和 defineEmits 是编译器宏，无需导入
-
 const props = defineProps({
   topics: {
     type: Array,
@@ -343,6 +341,7 @@ function generateMindMap() {
   .topics-sidebar {
     width: 100%;
     margin-bottom: 1rem;
+    min-height: 600px;
   }
   
   .topics-sidebar.collapsed {
