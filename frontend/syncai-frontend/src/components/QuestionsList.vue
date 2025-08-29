@@ -431,6 +431,8 @@ function escapeHtml(text) {
   color: var(--ai-summary-content-color);
   line-height: 1.6;
   font-size: 0.95em;
+  word-break: break-word;
+  white-space: pre-wrap;
 }
 
 @keyframes fadeInHighlight {
