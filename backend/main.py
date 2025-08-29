@@ -3,7 +3,6 @@ from fastapi import FastAPI
 from backend.api import ai_api
 from fastapi.middleware.cors import CORSMiddleware
 from backend.api import participants_api
-from backend.api import utility
 from backend.api import network_api
 
 app = FastAPI(title="MBBuddy API")
