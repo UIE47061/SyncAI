@@ -5,8 +5,8 @@
       <div class="nav-container">
         <div class="nav-brand" @click="router.push('/')" aria-label="返回主頁">
           <img src="/icon.png" alt="MBBuddy" class="brand-icon" />
-          <h1>MBBuddy</h1>
-          <span>主持人面板</span>
+          <!-- <h1>MBBuddy</h1> -->
+          <!-- <span>主持人面板</span> -->
         </div>
         <div class="nav-actions">
           <div class="room-info">
@@ -36,16 +36,21 @@
           @generate-mind-map="showMindMapModal = true"
         />
         
-        <!-- 意見列表 -->
-        <QuestionsList
-          :questions="questions"
-          :current-topic-title="topics[selectedTopicIndex]?.title || '未選擇主題'"
-          :sort-by="sortBy"
-          @delete-question="deleteQuestion"
-          @summary-ai="summaryAI"
-          @clear-all-questions="clearAllQuestions"
-          @update-sort-by="sortBy = $event"
-        />
+        <!-- 意見列表區域 -->
+        <div class="questions-section">
+          <!-- 傳遞 ref 值到 QuestionsList -->
+          <QuestionsList
+            :questions="questions"
+            :current-topic-title="topics[selectedTopicIndex]?.title || '未選擇主題'"
+            :sort-by="sortBy"
+            :discussion-progress="discussionProgress"
+            :discussion-progress-text="discussionProgressText"
+            @delete-question="deleteQuestion"
+            @summary-ai="summaryAI"
+            @clear-all-questions="clearAllQuestions"
+            @update-sort-by="sortBy = $event"
+          />
+        </div>
         
         <!-- 控制面板 -->
         <ControlPanel
@@ -191,6 +196,10 @@ const editTopicTab = ref('manual')
 const customAiPrompt = ref('')
 const isGeneratingTopic = ref(false)
 const topicSwipeState = ref({}); // { index: { startX, currentX, translateX, isDragging } }
+
+// 取得參與者名單
+const participantsList = ref([])
+
 // 統計
 const totalVotes = computed(() => questions.value.reduce((sum, q) => sum + (q.vote_good || 0) + (q.vote_bad || 0), 0))
 
@@ -210,6 +219,133 @@ const roomStatusText = computed(() => {
   }
 })
 
+// 修改：使用 ref 而不是 computed，避免歸零問題
+const discussionProgress = ref(0)
+const discussionProgressText = ref('等待討論開始...')
+
+// 新增：計算討論進度的函數 - 加入防歸零邏輯
+function calculateDiscussionProgress() {
+  // 防護：如果數據還在載入中，返回當前進度
+  if (!questions.value || !Array.isArray(questions.value)) {
+    console.log('🔍 questions 還在載入中，保持當前進度:', discussionProgress.value)
+    return discussionProgress.value
+  }
+
+  if (questions.value.length === 0) {
+    console.log('🔍 沒有留言，進度為 0')
+    return 0
+  }
+
+  // 過濾掉 AI 總結，只計算真實留言
+  const realComments = questions.value.filter(q => q && !q.isAISummary)
+  if (realComments.length === 0) {
+    console.log('🔍 沒有真實留言，進度為 0')
+    return 0
+  }
+
+  const participantCount = Math.max(participantsList.value.length, 1)
+
+  // 1. 留言數量評分 (40%)
+  const commentsPerParticipant = realComments.length / participantCount
+  const commentScore = Math.min(commentsPerParticipant * 3, 40) // 每人5條留言達到滿分
+
+  // 2. 投票活躍度評分 (30%)
+  const totalVotesCount = realComments.reduce((sum, q) => 
+    sum + (q.vote_good || 0) + (q.vote_bad || 0), 0
+  )
+  const votesPerComment = realComments.length > 0 ? totalVotesCount / realComments.length : 0
+  const voteScore = Math.min(votesPerComment * 6, 30) // 每條留言5票達到滿分
+
+  // 3. 參與者比例評分 (20%)
+  const uniqueParticipants = new Set(
+    realComments
+      .filter(q => q.nickname && q.nickname !== "MBBuddy 小助手")
+      .map(q => q.nickname)
+  ).size
+  const participationRate = uniqueParticipants / participantCount
+  const participationScore = participationRate * 20
+
+  // 4. 討論深度評分 (10%)
+  const avgLength = realComments.reduce((sum, q) => sum + (q.content?.length || 0), 0) / realComments.length
+  const depthScore = Math.min(avgLength / 50, 10) // 平均500字達到滿分
+
+  const totalScore = commentScore + voteScore + participationScore + depthScore
+
+  // debug 資訊
+  console.log('🔍 進度計算詳情:', {
+    realComments: realComments.length,
+    participantCount,
+    commentsPerParticipant,
+    commentScore,
+    totalVotesCount,
+    votesPerComment,
+    voteScore,
+    uniqueParticipants,
+    participationRate,
+    participationScore,
+    avgLength,
+    depthScore,
+    totalScore: Math.min(Math.round(totalScore), 100)
+  })
+
+  return Math.min(Math.round(totalScore), 100)
+}
+
+// 新增：更新進度的函數 - 加入防抖動邏輯
+function updateDiscussionProgress() {
+  try {
+    const newProgress = calculateDiscussionProgress()
+    const newProgressText = generateProgressText(newProgress)
+    
+    // 只有當新進度與當前進度差異明顯時才更新
+    if (Math.abs(newProgress - discussionProgress.value) >= 1 || newProgress === 0) {
+      discussionProgress.value = newProgress
+      discussionProgressText.value = newProgressText
+      console.log('✅ 進度更新:', newProgress + '%', newProgressText)
+    } else {
+      console.log('🔍 進度變化不大，不更新:', discussionProgress.value, '->', newProgress)
+    }
+  } catch (error) {
+    console.error('❌ 進度計算錯誤:', error)
+  }
+}
+
+// 新增：生成進度描述文字的函數
+function generateProgressText(progress) {
+  const realComments = questions.value.filter(q => q && !q.isAISummary)
+  const participantCount = Math.max(participantsList.value.length, 1)
+  const activeParticipants = new Set(
+    realComments
+      .filter(q => q.nickname && q.nickname !== "MBBuddy 小助手")
+      .map(q => q.nickname)
+  ).size
+
+  if (progress === 0) return '等待討論開始...'
+  if (progress < 10) return `討論剛開始 (${activeParticipants}/${participantCount} 人參與，${realComments.length} 條留言)`
+  if (progress < 25) return `討論逐漸熱絡 (${realComments.length} 條留言，${totalVotes.value} 次投票)`
+  if (progress < 45) return `討論持續活躍中 (${activeParticipants} 人積極參與)`
+  if (progress < 65) return `討論非常熱烈 (豐富的互動交流)`
+  if (progress < 85) return `討論達到高潮 (${realComments.length} 條深度交流)`
+  return `討論圓滿充實 (完美的參與度！)`
+}
+
+// 修改：使用防抖動的 watch
+let progressUpdateTimer = null
+watch([questions, participantsList], () => {
+  // 清除之前的計時器
+  if (progressUpdateTimer) {
+    clearTimeout(progressUpdateTimer)
+  }
+  
+  // 延遲更新，避免頻繁計算
+  progressUpdateTimer = setTimeout(() => {
+    updateDiscussionProgress()
+  }, 100) // 100ms 防抖動
+}, { 
+  deep: true,
+  immediate: false // 不立即執行
+})
+
 // 上方狀態顯示切換
 function toggleRoomStatus() {
   if (roomStatus.value === 'Discussion') {
@@ -218,10 +354,6 @@ function toggleRoomStatus() {
     setRoomStatus('Discussion')
   }
 }
-// participantUrl.value = `${window.location.protocol}//${window.location.hostname}:5173/participant?room=${roomCode.value}`
-
-// 取得參與者名單
-const participantsList = ref([])
 
 async function fetchParticipants() {
   try {
@@ -254,6 +386,30 @@ const sortedQuestions = computed(() => {
   return [...aiSummaries, ...sortedNormal];
 });
 
+// 修改：在資料載入完成後初始化進度
+async function fetchQuestions() {
+  try {
+    // 修復：使用正確的 RESTful API 端點
+    const response = await fetch(`${API_BASE_URL}/api/rooms/${roomCode.value}/comments`);
+    if (response.ok) {
+      const data = await response.json();
+      questions.value = data.comments || [];
+      
+      // 資料載入完成後，立即更新一次進度
+      nextTick(() => {
+        updateDiscussionProgress()
+      })
+    } else if (response.status === 404) {
+      // 如果房間不存在，清空問題列表
+      questions.value = [];
+      console.warn('房間不存在或沒有評論');
+    } else {
+      console.error('獲取評論失敗:', response.status, response.statusText);
+    }
+  } catch (error) {
+    console.error('載入意見時出錯:', error);
+  }
+}
 
 // 取得 Room 資訊
 async function loadRoom() {
@@ -382,30 +538,6 @@ function saveRoom() {
   }
 }
 
-// 獲取意見列表
-async function fetchQuestions() {
-  if (!roomCode.value) return;
-  
-  try {
-    // 使用新的 RESTful API
-    const response = await fetch(`${API_BASE_URL}/api/rooms/${roomCode.value}/comments`);
-    if (!response.ok) {
-      throw new Error(`HTTP error! Status: ${response.status}`);
-    }
-    
-    const resp = await response.json();
-    questions.value = resp["comments"] || [];
-    
-    // 您原有的 saveRoom 邏輯可以保留
-    if (room.value) {
-      saveRoom();
-    }
-    
-  } catch (error) {
-    console.error('獲取意見列表失敗:', error);
-  }
-}
-
 // 意見操作
 async function deleteQuestion(id) {
   if (!roomCode.value || !id) return
@@ -516,41 +648,55 @@ async function clearAllQuestions() {
     }
     
     try {
-      // 調用刪除主題評論的 API
-      const response = await fetch(`${API_BASE_URL}/api/room_topic_comments`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          room: roomCode.value,
-          topic: currentTopic
-        })
-      })
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! Status: ${response.status}`)
+      // 修復：獲取當前主題的所有評論，然後逐一刪除
+      const commentsResponse = await fetch(`${API_BASE_URL}/api/rooms/${roomCode.value}/comments`);
+      if (!commentsResponse.ok) {
+        throw new Error(`無法獲取評論列表: ${commentsResponse.status}`);
       }
       
-      const result = await response.json()
+      const commentsData = await commentsResponse.json();
+      const commentsToDelete = commentsData.comments || [];
       
-      if (result.success) {
-        // 清空本地意見列表
-        questions.value = []
-        if (room.value) {
-          room.value.questions = []
-          saveRoom()
+      if (commentsToDelete.length === 0) {
+        showNotification('當前主題沒有評論需要清空', 'info');
+        return;
+      }
+      
+      // 逐一刪除評論
+      let deletedCount = 0;
+      let votesDeletedCount = 0;
+      
+      for (const comment of commentsToDelete) {
+        try {
+          const deleteResponse = await fetch(`${API_BASE_URL}/api/rooms/${roomCode.value}/comments/${comment.id}`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' }
+          });
+          
+          if (deleteResponse.ok) {
+            deletedCount++;
+            // 每個評論的投票也會被一起刪除
+            votesDeletedCount += (comment.vote_good || 0) + (comment.vote_bad || 0);
+          }
+        } catch (deleteError) {
+          console.error('刪除單個評論失敗:', deleteError);
         }
-        
-        // 顯示詳細的清空結果
-        const message = `已清空主題「${result.topic}」的所有內容：刪除了 ${result.deleted_comments_count} 個評論和 ${result.deleted_votes_count} 個投票記錄`
-        showNotification(message, 'success')
-        
-        // 重新獲取意見列表以確保同步
-        await fetchQuestions()
-      } else {
-        showNotification(result.error || '清空意見失敗', 'error')
       }
+      
+      // 清空本地意見列表
+      questions.value = []
+      if (room.value) {
+        room.value.questions = []
+        saveRoom()
+      }
+      
+      // 顯示清空結果
+      const message = `已清空主題「${currentTopic}」的所有內容：刪除了 ${deletedCount} 個評論和約 ${votesDeletedCount} 個投票記錄`;
+      showNotification(message, 'success');
+      
+      // 重新獲取意見列表以確保同步
+      await fetchQuestions();
+      
     } catch (error) {
       console.error('清空意見失敗:', error)
       showNotification('清空意見失敗，請稍後再試', 'error')
@@ -1468,7 +1614,14 @@ onBeforeUnmount(() => {
   if (timerInterval.value) {
     clearInterval(timerInterval.value)
   }
+  
+  // 清理進度更新計時器
+  if (progressUpdateTimer) {
+    clearTimeout(progressUpdateTimer)
+  }
 })
+
+// --- 以下為原有函數，請根據需要保留或修改 ---
 </script>
 
 <style scoped>
@@ -1479,13 +1632,15 @@ onBeforeUnmount(() => {
     max-width: 1500px;
     margin: 0 auto;
     padding: 1.5rem 1rem;
+    min-height: calc(100vh - 140px); /* 確保最小高度 */
 }
 
 .host-layout {
   display: grid;
   grid-template-columns: auto 1fr 350px;
   gap: 1.5rem;
-  height: calc(100vh - 70px - 6rem - 1px);
+  min-height: calc(100vh - 70px - 6rem - 1px); /* 改為最小高度而不是固定高度 */
+  height: auto; /* 允許內容撐開高度 */
 }
 
 /* 導覽列樣式 */
@@ -1564,12 +1719,28 @@ onBeforeUnmount(() => {
   background: var(--surface);
   color: var(--text-primary);
 }
+
+/* 意見列表區域 - 重要修正 */
+.questions-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-height: 500px; /* 設定最小高度 */
+  height: auto; /* 允許內容撐開 */
+  overflow: visible; /* 確保內容不被切掉 */
+}
+
 /* 響應式調整 */
 @media (max-width: 1024px) {
   .host-layout {
     grid-template-columns: 1fr;
     grid-template-rows: auto auto auto;
-    height: auto;
+    height: auto; /* 確保自適應高度 */
+    min-height: auto; /* 移除最小高度限制 */
+  }
+  
+  .questions-section {
+    min-height: 400px; /* 在小螢幕上調整最小高度 */
   }
 }
 
@@ -1584,6 +1755,15 @@ onBeforeUnmount(() => {
     flex-direction: column;
     gap: 0.5rem;
   }
-}
 
+  .progress-header {
+    flex-direction: column;
+    gap: 0.5rem;
+    text-align: center;
+  }
+  
+  .questions-section {
+    min-height: 300px; /* 手機上進一步調整 */
+  }
+}
 </style>
