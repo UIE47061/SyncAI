@@ -253,7 +253,8 @@ function escapeHtml(text) {
 .progress-label {
   font-size: 1rem;
   font-weight: 600;
-  color: #1e40af; /* 深藍色 */
+  /* 修改：使用主題變數，自動適應深淺色模式 */
+  color: var(--text-primary); /* 這會在淺色模式下是黑色，深色模式下是白色 */
   white-space: nowrap;
   min-width: fit-content;
 }
@@ -324,7 +325,7 @@ function escapeHtml(text) {
 .progress-percentage {
   font-size: 1.1rem;
   font-weight: bold;
-  color: #2563eb; /* 藍色 */
+  color: var(--primary-color); /* 保持藍色主題 */
   white-space: nowrap;
   min-width: fit-content;
 }
