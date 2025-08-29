@@ -161,6 +161,22 @@ class AIClient:
             print(f"獲取workspace信息失敗: {e}")
             return None
     
+    async def test_connection(self) -> bool:
+        """
+        測試 AnythingLLM 連接
+        
+        Returns:
+            連接是否成功
+        """
+        try:
+            response = await self.config.httpx_client.get(
+                self.config.get_workspaces_url(),
+                headers=self.config.headers
+            )
+            return response.status_code == 200
+        except Exception:
+            return False
+    
     async def call_chat_api(self, message: str, workspace_slug: str = None, mode: str = "chat") -> str:
         """
         調用 AnythingLLM 的聊天 API
