@@ -1,5 +1,5 @@
 fastapi
 uvicorn
 pydantic
-llama-cpp-python
+httpx
 reportlab

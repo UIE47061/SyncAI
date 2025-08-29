@@ -1,30 +1,203 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from llama_cpp import Llama
-import json, re
-from typing import List
+import httpx
+import random, string, time, json, re, os
+from typing import Union, List
 from .participants_api import ROOMS, topics, votes
 
 router = APIRouter(prefix="/ai", tags=["AI"])
 
-# 載入模型，只做一次（全域單例）
-MODEL_PATH = 'ai_models/mistral-7b-instruct-v0.2.Q5_K_M.gguf'
-llm = Llama(model_path=MODEL_PATH, n_ctx=2048)
+# AnythingLLM API 配置
+ANYTHINGLLM_BASE_URL = os.getenv("ANYTHINGLLM_BASE_URL", "http://localhost:3001")
+ANYTHINGLLM_API_KEY = os.getenv("ANYTHINGLLM_API_KEY", "PNB2B7R-4EC4P21-NM0XHTX-4BHZBHJ")
+ANYTHINGLLM_WORKSPACE_SLUG = os.getenv("ANYTHINGLLM_WORKSPACE_SLUG", "syncai")
+
+if not ANYTHINGLLM_API_KEY:
+    print("警告：未設置 ANYTHINGLLM_API_KEY 環境變數")
+
+# HTTP 客戶端配置
+httpx_client = httpx.AsyncClient(timeout=60.0)
+
+async def ensure_workspace_exists(workspace_slug: str, workspace_name: str) -> bool:
+    """
+    確保指定的工作區存在，如果不存在則創建
+    
+    Args:
+        workspace_slug: 工作區的slug（通常是會議室代碼）
+        workspace_name: 工作區的顯示名稱（通常是會議室名稱）
+    
+    Returns:
+        True if workspace exists or was created successfully
+    
+    Raises:
+        HTTPException: 當操作失敗時
+    """
+    if not ANYTHINGLLM_API_KEY:
+        raise HTTPException(status_code=500, detail="未配置 AnythingLLM API Key")
+    
+    headers = {
+        "Authorization": f"Bearer {ANYTHINGLLM_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    try:
+        # 1. 檢查工作區是否已存在
+        response = await httpx_client.get(
+            f"{ANYTHINGLLM_BASE_URL}/api/v1/workspace/{workspace_slug}",
+            headers=headers
+        )
+        
+        if response.status_code == 200:
+            print(f"工作區 '{workspace_slug}' 已存在")
+            return True
+        
+        # 2. 如果不存在，創建新工作區
+        if response.status_code == 404:
+            create_payload = {
+                "name": workspace_name,
+                "slug": workspace_slug,
+                "description": f"SyncAI 會議室: {workspace_name}"
+            }
+            
+            create_response = await httpx_client.post(
+                f"{ANYTHINGLLM_BASE_URL}/api/v1/workspaces",
+                headers=headers,
+                json=create_payload
+            )
+            
+            if create_response.status_code == 200:
+                print(f"成功創建工作區 '{workspace_slug}' ({workspace_name})")
+                return True
+            else:
+                error_detail = f"創建工作區失敗: {create_response.status_code}"
+                try:
+                    error_data = create_response.json()
+                    error_detail += f" - {error_data.get('message', '未知錯誤')}"
+                except:
+                    pass
+                raise HTTPException(status_code=500, detail=error_detail)
+        else:
+            # 其他錯誤
+            raise HTTPException(status_code=500, detail=f"檢查工作區時發生錯誤: {response.status_code}")
+            
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=500, detail="AnythingLLM API 請求超時")
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=500, detail=f"AnythingLLM API 連接錯誤: {str(e)}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"確保工作區存在時發生未知錯誤: {str(e)}")
+
+def get_workspace_info_from_room(room_code: str = None) -> tuple[str, str]:
+    """
+    從會議室代碼獲取工作區信息
+    
+    Args:
+        room_code: 會議室代碼，如果為None則使用預設
+    
+    Returns:
+        (workspace_slug, workspace_name)
+    """
+    # 暫時使用現有的 "mac" 工作區，直到模型配置完成
+    # TODO: 在模型配置好後，改為根據會議室動態創建工作區
+    return "mac", "Mac工作區"
+    
+    # 未來的動態工作區邏輯（當模型配置好後啟用）
+    # if room_code and room_code in ROOMS:
+    #     room_data = ROOMS[room_code]
+    #     room_title = room_data.get('title', f'會議室-{room_code}')
+    #     workspace_slug = f"syncai-{room_code.lower()}"
+    #     workspace_name = f"SyncAI-{room_title}"
+    #     return workspace_slug, workspace_name
+    # else:
+    #     return "syncai-default", "SyncAI-預設會議室"
+
+async def call_anythingllm_chat(message: str, workspace_slug: str, mode: str = "chat") -> str:
+    """
+    調用 AnythingLLM 的聊天 API
+    
+    Args:
+        message: 要發送的訊息
+        workspace_slug: 工作區的slug
+        mode: 聊天模式 (chat, query, 等)
+    
+    Returns:
+        AI 的回覆文字
+    
+    Raises:
+        HTTPException: 當 API 調用失敗時
+    """
+    if not ANYTHINGLLM_API_KEY:
+        raise HTTPException(status_code=500, detail="未配置 AnythingLLM API Key")
+    
+    headers = {
+        "Authorization": f"Bearer {ANYTHINGLLM_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "message": message,
+        "mode": mode
+    }
+    
+    try:
+        response = await httpx_client.post(
+            f"{ANYTHINGLLM_BASE_URL}/api/v1/workspace/{workspace_slug}/chat",
+            headers=headers,
+            json=payload
+        )
+        
+        if response.status_code != 200:
+            error_detail = f"AnythingLLM API 錯誤: {response.status_code}"
+            try:
+                error_data = response.json()
+                error_detail += f" - {error_data.get('message', '未知錯誤')}"
+            except:
+                pass
+            raise HTTPException(status_code=500, detail=error_detail)
+        
+        result = response.json()
+        
+        # 提取回覆文字（根據 AnythingLLM 的回覆格式調整）
+        print(f"AnythingLLM 回覆: {result}")  # 調試日誌
+        
+        # 檢查是否有錯誤
+        if "error" in result and result["error"]:
+            raise HTTPException(status_code=500, detail=f"AnythingLLM 錯誤: {result['error']}")
+        
+        if "textResponse" in result and result["textResponse"]:
+            return result["textResponse"]
+        elif "message" in result:
+            return result["message"]
+        elif "response" in result:
+            return result["response"]
+        else:
+            # 如果找不到預期的欄位，返回整個回覆
+            return str(result)
+            
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=500, detail="AnythingLLM API 請求超時")
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=500, detail=f"AnythingLLM API 連接錯誤: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"調用 AnythingLLM API 時發生未知錯誤: {str(e)}")
 
 class AskRequest(BaseModel):
     prompt: str
 
 @router.post("/ask")
-def ask_ai(req: AskRequest):
-    output = llm(
-        req.prompt,
-        max_tokens=128,
-        stop=["</s>"],
-        echo=False,
-        temperature=0.8,
-    )
-    answer = output["choices"][0]["text"].strip()
-    return {"answer": answer}
+async def ask_ai(req: AskRequest):
+    try:
+        # 使用預設工作區
+        workspace_slug, workspace_name = get_workspace_info_from_room()
+        await ensure_workspace_exists(workspace_slug, workspace_name)
+        answer = await call_anythingllm_chat(req.prompt, workspace_slug)
+        return {"answer": answer}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI 處理失敗: {str(e)}")
 
 # 定義用於 AI 總結的請求模型
 class SummaryRequest(BaseModel):
@@ -33,7 +206,7 @@ class SummaryRequest(BaseModel):
 
 # --- 重寫 summary_ai 函式 ---
 @router.post("/summary")
-def summary_ai(req: SummaryRequest):
+async def summary_ai(req: SummaryRequest):
     """
     對指定會議室的特定主題進行 AI 總結
 
@@ -113,19 +286,19 @@ def summary_ai(req: SummaryRequest):
                     [此處條列會議的最重要共識或後續追蹤事項]
                 """
 
-    # 呼叫 AI 模型
-    output = llm(
-        prompt,
-        max_tokens=1024,
-        stop=["</s>"],
-        echo=False,
-        temperature=0.8,
-    )
-    
-    summary_text = output["choices"][0]["text"].strip()
-    return {"summary": summary_text}
+    # 呼叫 AnythingLLM API
+    try:
+        # 使用會議室特定的工作區
+        workspace_slug, workspace_name = get_workspace_info_from_room(req.room)
+        await ensure_workspace_exists(workspace_slug, workspace_name)
+        summary_text = await call_anythingllm_chat(prompt, workspace_slug, mode="query")
+        return {"summary": summary_text}
+    except HTTPException:
+        raise
+    except Exception as e:
+        return {"summary": f"AI 總結生成失敗: {str(e)}"}
 
-def _generate_topics_from_title(meeting_title: str, topic_count: int, llm_instance: Llama) -> List[str]:
+async def _generate_topics_from_title(meeting_title: str, topic_count: int, workspace_slug: str) -> List[str]:
     """
     根據會議標題生成主題的核心邏輯。
     這是一個內部函式，旨在被其他 API 端點調用。
@@ -154,15 +327,7 @@ def _generate_topics_from_title(meeting_title: str, topic_count: int, llm_instan
     """
 
     try:
-        output = llm_instance(
-            prompt,
-            max_tokens=512,
-            stop=["</s>"],
-            echo=False,
-            temperature=0.7,
-        )
-        
-        raw_text = output["choices"][0]["text"].strip()
+        raw_text = await call_anythingllm_chat(prompt, workspace_slug, mode="query")
 
         # --- 4. 解析 AI 的回覆 (v4 終極版) ---
         
@@ -238,7 +403,7 @@ class GenerateTopicsRequest(BaseModel):
     topic_count: int
 
 @router.post("/generate_topics")
-def generate_ai_topics(req: GenerateTopicsRequest):
+async def generate_ai_topics(req: GenerateTopicsRequest):
     """
     根據會議名稱和指定數量，使用 AI 生成議程主題。
 
@@ -274,19 +439,12 @@ def generate_ai_topics(req: GenerateTopicsRequest):
         ["回顧第二季銷售數據與客戶回饋", "討論新功能優先級與開發時程", "設定第三季的關鍵績效指標 (KPI)"]
     """
 
-    # --- 3. 呼叫大型語言模型 (LLM) ---
-    # 假設您有一個名為 llm 的函式來呼叫 AI 模型
-    # 這裡的參數可以根據您的模型進行微調
+    # --- 3. 呼叫 AnythingLLM API ---
     try:
-        output = llm(
-            prompt,
-            max_tokens=512,  # 產生的 token 數量可以少一些，因為只是主題列表
-            stop=["</s>"],
-            echo=False,
-            temperature=0.7, # 溫度可以稍微低一點，讓主題更聚焦
-        )
-        
-        raw_text = output["choices"][0]["text"].strip()
+        # 使用預設工作區進行主題生成
+        workspace_slug, workspace_name = get_workspace_info_from_room()
+        await ensure_workspace_exists(workspace_slug, workspace_name)
+        raw_text = await call_anythingllm_chat(prompt, workspace_slug, mode="query")
 
         # --- 4. 解析 AI 的回覆 ---
         # 我們優先嘗試將回覆直接解析為 JSON
@@ -327,7 +485,7 @@ class GenerateSingleTopicRequest(BaseModel):
     custom_prompt: str
 
 @router.post("/generate_single_topic")
-def generate_single_topic(req: GenerateSingleTopicRequest):
+async def generate_single_topic(req: GenerateSingleTopicRequest):
     """
     根據會議室和自訂提示，使用 AI 生成單一議程主題。
 
@@ -382,14 +540,14 @@ def generate_single_topic(req: GenerateSingleTopicRequest):
     
     prompt += "\n\n請直接返回一個簡潔、具體且不超過10個字的主題，不需要任何前綴或解釋。"
 
-    # 呼叫 AI 模型
-    output = llm(
-        prompt,
-        max_tokens=64,
-        stop=["</s>"],
-        echo=False,
-        temperature=0.8,
-    )
-    
-    topic = output["choices"][0]["text"].strip()
-    return {"topic": topic}
+    # 呼叫 AnythingLLM API
+    try:
+        # 使用會議室特定的工作區
+        workspace_slug, workspace_name = get_workspace_info_from_room(req.room)
+        await ensure_workspace_exists(workspace_slug, workspace_name)
+        topic = await call_anythingllm_chat(prompt, workspace_slug, mode="query")
+        return {"topic": topic.strip()}
+    except HTTPException:
+        raise
+    except Exception as e:
+        return {"topic": f"AI 主題生成失敗: {str(e)}"}

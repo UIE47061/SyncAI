@@ -19,7 +19,7 @@
 </template>
 
 <script setup>
-import { defineProps, defineEmits, ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import QrcodeVue from 'qrcode.vue'
 
 const props = defineProps({

@@ -190,7 +190,7 @@
 </template>
 
 <script setup>
-import { defineProps, defineEmits, ref, reactive, watch } from 'vue'
+import { ref, reactive, watch } from 'vue'
 
 const props = defineProps({
   activeTab: {
