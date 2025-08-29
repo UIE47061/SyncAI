@@ -33,6 +33,7 @@
           @edit-topic="startEditTopic"
           @add-new-topic="addNewTopic"
           @export-all-topics="exportAllTopics"
+          @generate-mind-map="showMindMapModal = true"
         />
         
         <!-- 意見列表 -->
@@ -109,6 +110,12 @@
       @cancel-edit="cancelTopicModal"
       @confirm-edit="handleTopicModalConfirm"
     />
+    
+    <!-- AI心智圖彈窗 -->
+    <MindMapModal
+      :show="showMindMapModal"
+      @close="showMindMapModal = false"
+    />
   </div>
 </template>
 
@@ -124,6 +131,7 @@ import NotificationToast from './NotificationToast.vue'
 import QRCodeModal from './QRCodeModal.vue'
 import TimerModal from './TimerModal.vue'
 import TopicEditModal from './TopicEditModal.vue'
+import MindMapModal from './MindMapModal.vue'
 
 // 控制面板 tab 狀態
 const controlTab = ref('control')
@@ -170,6 +178,7 @@ const autoChangeStatus = ref(true)
 
 // 側邊欄與主題相關
 const isSidebarCollapsed = ref(false)
+const showMindMapModal = ref(false)
 const topics = ref([
   { title: '主題 1', content: '', timestamp: new Date().toISOString() }
 ])
