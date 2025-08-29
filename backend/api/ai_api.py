@@ -485,7 +485,7 @@ async def _generate_topics_from_title(meeting_title: str, topic_count: int, work
 
     except Exception as e:
         print(f"Error calling LLM for topic generation: {e}")
-        return [f"抱歉，AI 服務暫時無法連線，請稍後再試。"]
+        return [f"AI服務暫時無法連線，請稍後再試。"]
 
 
 class GenerateTopicsRequest(BaseModel):
@@ -569,7 +569,7 @@ async def generate_ai_topics(req: GenerateTopicsRequest):
     except Exception as e:
         # 處理呼叫 AI 時可能發生的任何錯誤
         print(f"Error calling LLM for topic generation: {e}")
-        return {"topics": [f"抱歉，AI 服務暫時無法連線，請稍後再試。"]}
+        return {"topics": [f"AI 服務暫時無法連線，請稍後再試。"]}
 
 # 新增的請求模型，用於 generate_single_topic 端點
 class GenerateSingleTopicRequest(BaseModel):

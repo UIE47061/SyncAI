@@ -19,9 +19,7 @@
             </button>
           </div>
         </div>
-      </div>
-      
-      <div class="questions-container">
+        
         <!-- 第二行：討論進度條（並排排版） -->
         <div class="progress-row">
           <div class="progress-inline">
@@ -31,7 +29,14 @@
             </div>
             <span class="progress-percentage">{{ discussionProgress }}%</span>
           </div>
+          <!-- 新增：動態描述文字 -->
+          <div class="progress-description">
+            {{ discussionProgressText }}
+          </div>
         </div>
+      </div>
+      
+      <div class="questions-container">
         <template v-if="sortedQuestions.length === 0">
           <div class="empty-state">
             <div class="empty-icon">
@@ -101,19 +106,23 @@ import { ref, computed, watch } from 'vue'
 const props = defineProps({
   questions: {
     type: Array,
-    required: true
+    default: () => []
   },
   currentTopicTitle: {
     type: String,
-    required: true
+    default: '未選擇主題'
   },
   sortBy: {
     type: String,
-    required: true
+    default: 'votes'
   },
-  discussionProgress: {  // 新增進度條數據
+  discussionProgress: {
     type: Number,
-    default: 89
+    default: 0
+  },
+  discussionProgressText: {
+    type: String,
+    default: '等待討論開始...'
   }
 })
 
@@ -184,6 +193,7 @@ function escapeHtml(text) {
   display: flex;
   flex-direction: column;
   height: 100%;
+  min-height: 500px;
 }
 
 .questions-panel {
@@ -191,6 +201,9 @@ function escapeHtml(text) {
   border: 1px solid var(--border);
   border-radius: 1rem;
   overflow: hidden;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .panel-header {
@@ -200,6 +213,7 @@ function escapeHtml(text) {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  flex-shrink: 0;
 }
 
 /* 第一行：標題和控制按鈕 */
@@ -239,9 +253,88 @@ function escapeHtml(text) {
 .progress-label {
   font-size: 1rem;
   font-weight: 600;
-  color: var(--text-primary);
+  color: #1e40af; /* 深藍色 */
   white-space: nowrap;
   min-width: fit-content;
+}
+
+.progress-bar {
+  flex: 1;
+  height: 8px;
+  background-color: #e5e7eb;
+  border-radius: 4px;
+  overflow: hidden;
+  min-width: 100px;
+  /* 新增：容器陰影 */
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.progress-fill {
+  height: 100%;
+  /* 修改：改為藍色漸層 */
+  background: linear-gradient(90deg, 
+    #3b82f6 0%,      /* 藍色 */
+    #1d4ed8 50%,     /* 深藍色 */
+    #2563eb 100%     /* 中藍色 */
+  );
+  border-radius: 4px;
+  transition: width 0.8s ease-in-out;
+  position: relative;
+  /* 新增：藍色的光澤效果 */
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.3);
+}
+
+/* 修改：白色跑條效果 */
+.progress-fill::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  /* 修改：白色跑條 */
+  background: linear-gradient(90deg, 
+    transparent 0%, 
+    rgba(255, 255, 255, 0.6) 30%, 
+    rgba(255, 255, 255, 0.8) 50%, 
+    rgba(255, 255, 255, 0.6) 70%, 
+    transparent 100%
+  );
+  animation: shimmer 2s infinite;
+  border-radius: 4px;
+}
+
+@keyframes shimmer {
+  0% { 
+    transform: translateX(-100%); 
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% { 
+    transform: translateX(100%); 
+    opacity: 0;
+  }
+}
+
+.progress-percentage {
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: #2563eb; /* 藍色 */
+  white-space: nowrap;
+  min-width: fit-content;
+}
+
+.progress-description {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  text-align: center;
+  margin-top: 0.5rem;
+  font-style: italic;
 }
 
 .sort-options {
@@ -279,9 +372,10 @@ function escapeHtml(text) {
 }
 
 .questions-container {
-  height: calc(100% - 120px); /* 調整高度以適應兩行標題 */
+  flex: 1;
   overflow-y: auto;
   padding: 1rem;
+  min-height: 300px;
 }
 
 .empty-state {
@@ -432,74 +526,10 @@ function escapeHtml(text) {
   color: var(--primary-color);
 }
 
-/* 討論進度條樣式 */
-.discussion-progress {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 1rem;
-  box-shadow: var(--shadow);
-}
-
-.progress-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.75rem;
-}
-
-.progress-header h4 {
-  margin: 0;
-  color: var(--text-primary);
-  font-size: 1rem;
-  font-weight: 600;
-}
-
-.progress-percentage {
-  font-size: 1.1rem;
-  font-weight: bold;
-  color: var(--primary-color);
-  white-space: nowrap;
-  min-width: fit-content;
-}
-
-.progress-bar {
-  flex: 1;
-  height: 8px;
-  background-color: #e5e7eb;
-  border-radius: 4px;
-  overflow: hidden;
-  margin-bottom: 0.5rem;
-}
-
-.progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, var(--primary-color), #3b82f6);
-  border-radius: 4px;
-  transition: width 0.5s ease-in-out;
-  position: relative;
-}
-
-.progress-fill::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
-  animation: shimmer 2s infinite;
-}
-
-@keyframes shimmer {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
-}
-
 /* 響應式調整 */
 @media (max-width: 1024px) {
   .questions-container { 
-    height: 500px; 
+    min-height: 400px; 
   }
 }
 
@@ -537,6 +567,10 @@ function escapeHtml(text) {
     min-width: 80px;
   }
   
+  .progress-description {
+    font-size: 0.8rem;
+  }
+  
   .question-meta {
     flex-direction: column;
     align-items: flex-start;
@@ -546,6 +580,10 @@ function escapeHtml(text) {
   .question-info {
     align-items: flex-start;
     width: 100%;
+  }
+  
+  .questions-container {
+    min-height: 300px;
   }
 }
 
@@ -560,6 +598,10 @@ function escapeHtml(text) {
   .progress-bar {
     width: 100%;
     min-width: unset;
+  }
+  
+  .questions-container {
+    min-height: 250px;
   }
 }
 </style>
