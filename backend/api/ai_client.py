@@ -132,6 +132,35 @@ class AIClient:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"確保工作區存在時發生未知錯誤: {str(e)}")
     
+    async def get_workspace_info(self, workspace_slug: str) -> dict:
+        """
+        獲取workspace的詳細信息，包括ID
+        
+        Args:
+            workspace_slug: workspace的slug
+            
+        Returns:
+            workspace的詳細信息字典，包括id
+        """
+        try:
+            response = await self.config.httpx_client.get(
+                self.config.get_workspaces_url(),
+                headers=self.config.headers
+            )
+            
+            if response.status_code == 200:
+                workspaces_data = response.json()
+                existing_workspaces = workspaces_data.get("workspaces", [])
+                
+                for ws in existing_workspaces:
+                    if ws.get("slug") == workspace_slug:
+                        return ws
+                        
+            return None
+        except Exception as e:
+            print(f"獲取workspace信息失敗: {e}")
+            return None
+    
     async def call_chat_api(self, message: str, workspace_slug: str = None, mode: str = "chat") -> str:
         """
         調用 AnythingLLM 的聊天 API

@@ -6,6 +6,7 @@ import platform
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from .utility import export_room_pdf
+from .ai_client import ai_client
 
 # --- Pydantic Models for RESTful API ---
 class CommentRequest(BaseModel):
@@ -169,7 +170,7 @@ class RoomCreate(BaseModel):
     countdown: int = 15 * 60
 
 @router.post("/api/create_room")
-def create_room(room: RoomCreate):
+async def create_room(room: RoomCreate):
     """
     建立會議室
 
@@ -213,7 +214,25 @@ def create_room(room: RoomCreate):
         "topic_summary": (room.topic_summary or "").strip(),
         "desired_outcome": (room.desired_outcome or "").strip(),
         "topic_count": room.topic_count, # 使用前端傳來的值
+        "workspace_slug": None,  # 會議專屬的workspace slug
+        "workspace_id": None,    # 會議專屬的workspace id
     }
+    
+    # 立即為此會議創建專屬的workspace
+    try:
+        workspace_slug = await ai_client.ensure_workspace_exists(code, title)
+        # 從AnythingLLM API獲取workspace詳細信息包括ID
+        workspace_info = await ai_client.get_workspace_info(workspace_slug)
+        
+        ROOMS[code]["workspace_slug"] = workspace_slug
+        if workspace_info and "id" in workspace_info:
+            ROOMS[code]["workspace_id"] = workspace_info["id"]
+        
+        print(f"✅ 會議 '{title}' (代碼: {code}) 的專屬workspace已創建: {workspace_slug}")
+    except Exception as e:
+        print(f"⚠️ 為會議 '{title}' 創建workspace時發生錯誤: {e}")
+        # 不影響會議創建，workspace可以稍後創建
+        pass
     
     for topic_name in room_topics:
         topic_name_stripped = topic_name.strip()
@@ -320,6 +339,8 @@ def get_rooms():
             "topic_summary": room.get("topic_summary", ""),
             "desired_outcome": room.get("desired_outcome", ""),
             "countdown": room.get("countdown", 0),
+            "workspace_slug": room.get("workspace_slug", ""),
+            "workspace_id": room.get("workspace_id", ""),
         }
         rooms.append(room_info)
     return {"rooms": rooms}

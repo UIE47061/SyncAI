@@ -86,10 +86,22 @@ async def summary_ai(req: SummaryRequest):
 
     # 使用透明融合系統生成摘要
     try:
-        # 獲取會議室資訊並確保工作區存在
+        # 獲取會議室資訊
         room_data = ROOMS[req.room]
         room_title = room_data.get('title', f'會議室-{req.room}')
-        workspace_slug = await ai_client.ensure_workspace_exists(req.room, room_title)
+        
+        # 優先使用會議創建時保存的workspace，如果不存在則創建
+        workspace_slug = room_data.get('workspace_slug')
+        if not workspace_slug:
+            print(f"⚠️ 會議 {req.room} 沒有預設workspace，正在創建...")
+            workspace_slug = await ai_client.ensure_workspace_exists(req.room, room_title)
+            # 更新會議數據
+            ROOMS[req.room]['workspace_slug'] = workspace_slug
+            workspace_info = await ai_client.get_workspace_info(workspace_slug)
+            if workspace_info and "id" in workspace_info:
+                ROOMS[req.room]['workspace_id'] = workspace_info["id"]
+        else:
+            print(f"✅ 使用會議專屬workspace: {workspace_slug}")
         
         # 使用透明融合系統：NPU+CPU並行->NPU融合，提升摘要質量
         summary_text = await transparent_fusion.process_request(
@@ -201,10 +213,22 @@ async def generate_single_topic(req: GenerateSingleTopicRequest):
 
     # 使用透明融合系統生成單一主題
     try:
-        # 獲取會議室資訊並確保工作區存在
+        # 獲取會議室資訊
         room_data = ROOMS[req.room]
         room_title = room_data.get('title', f'會議室-{req.room}')
-        workspace_slug = await ai_client.ensure_workspace_exists(req.room, room_title)
+        
+        # 優先使用會議創建時保存的workspace，如果不存在則創建
+        workspace_slug = room_data.get('workspace_slug')
+        if not workspace_slug:
+            print(f"⚠️ 會議 {req.room} 沒有預設workspace，正在創建...")
+            workspace_slug = await ai_client.ensure_workspace_exists(req.room, room_title)
+            # 更新會議數據
+            ROOMS[req.room]['workspace_slug'] = workspace_slug
+            workspace_info = await ai_client.get_workspace_info(workspace_slug)
+            if workspace_info and "id" in workspace_info:
+                ROOMS[req.room]['workspace_id'] = workspace_info["id"]
+        else:
+            print(f"✅ 使用會議專屬workspace: {workspace_slug}")
         
         # 使用透明融合系統：NPU+CPU並行->NPU融合
         topic = await transparent_fusion.process_request(
