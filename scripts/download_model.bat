@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-REM SyncAI Model Download Script (Windows)
+REM MBBuddy Model Download Script (Windows)
 REM This script will automatically download the required AI model files
 
 setlocal enabledelayedexpansion
@@ -14,14 +14,14 @@ set MODEL_URL=https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/reso
 
 echo.
 echo =====================================
-echo    SyncAI Model Download Tool
+echo    MBBuddy Model Download Tool
 echo =====================================
 echo.
 
 REM Check if directory exists
 if not exist "%MODEL_DIR%" (
     echo [ERROR] Cannot find %MODEL_DIR% directory
-    echo Please make sure you are running this script from the SyncAI project root directory
+    echo Please make sure you are running this script from the MBBuddy project root directory
     echo.
     pause
     exit /b 1
@@ -70,7 +70,7 @@ if exist "%MODEL_FILE%" (
     echo [INFO] File information:
     dir "%MODEL_FILE%"
     echo.
-    echo [INFO] Now you can start SyncAI:
+    echo [INFO] Now you can start MBBuddy:
     echo    docker-compose -f docker/docker-compose.yml up -d
     echo.
 ) else (

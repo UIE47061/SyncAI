@@ -1,4 +1,4 @@
-# SyncAI Docker 使用指南
+# MBBuddy Docker 使用指南
 
 ## 🚀 快速開始
 

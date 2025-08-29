@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-REM SyncAI Local Development Services Start Script (Windows)
+REM MBBuddy Local Development Services Start Script (Windows)
 
 setlocal enabledelayedexpansion
 
@@ -10,7 +10,7 @@ set PROJECT_ROOT=%SCRIPT_DIR%..
 
 echo.
 echo =====================================
-echo   Start SyncAI Local Development
+echo   Start MBBuddy Local Development
 echo =====================================
 echo.
 
@@ -73,6 +73,6 @@ pause
 exit /b 0
 
 :error_dir
-echo [ERROR] Please run this script from the SyncAI project root directory
+echo [ERROR] Please run this script from the MBBuddy project root directory
 pause
 exit /b 1

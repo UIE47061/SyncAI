@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-REM SyncAI Local Development Services Stop Script (Windows)
+REM MBBuddy Local Development Services Stop Script (Windows)
 
 REM Get script directory and project root
 set SCRIPT_DIR=%~dp0
@@ -8,7 +8,7 @@ set PROJECT_ROOT=%SCRIPT_DIR%..
 
 echo.
 echo =====================================
-echo   Stop SyncAI Local Development
+echo   Stop MBBuddy Local Development
 echo =====================================
 echo.
 

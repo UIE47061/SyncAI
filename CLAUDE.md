@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-SyncAI is a local privacy-focused AI meeting collaboration platform that combines anonymous opinion collection, real-time voting, AI assistance, and automatic summarization. The system uses FastAPI backend with llama-cpp-python for local AI inference and Vue 3 frontend.
+MBBuddy is a local privacy-focused AI meeting collaboration platform that combines anonymous opinion collection, real-time voting, AI assistance, and automatic summarization. The system uses FastAPI backend with llama-cpp-python for local AI inference and Vue 3 frontend.
 
 ## Key Architecture
 
