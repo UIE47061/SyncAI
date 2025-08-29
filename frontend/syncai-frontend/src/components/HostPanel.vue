@@ -35,16 +35,20 @@
           @export-all-topics="exportAllTopics"
         />
         
-        <!-- 意見列表 -->
-        <QuestionsList
-          :questions="questions"
-          :current-topic-title="topics[selectedTopicIndex]?.title || '未選擇主題'"
-          :sort-by="sortBy"
-          @delete-question="deleteQuestion"
-          @summary-ai="summaryAI"
-          @clear-all-questions="clearAllQuestions"
-          @update-sort-by="sortBy = $event"
-        />
+        <!-- 意見列表區域 -->
+        <div class="questions-section">
+          <!-- 意見列表（將進度條傳入） -->
+          <QuestionsList
+            :questions="questions"
+            :current-topic-title="topics[selectedTopicIndex]?.title || '未選擇主題'"
+            :sort-by="sortBy"
+            :discussion-progress="discussionProgress"
+            @delete-question="deleteQuestion"
+            @summary-ai="summaryAI"
+            @clear-all-questions="clearAllQuestions"
+            @update-sort-by="sortBy = $event"
+          />
+        </div>
         
         <!-- 控制面板 -->
         <ControlPanel
@@ -1447,6 +1451,9 @@ onMounted(async () => {
 
   fetchParticipants()
   participantsPoller = setInterval(fetchParticipants, 5000)
+
+  // 啟動進度條更新
+  progressInterval = setInterval(updateDiscussionProgress, 2000) // 每2秒增加5%
 })
 
 onBeforeUnmount(() => {
@@ -1458,6 +1465,11 @@ onBeforeUnmount(() => {
   // 停止計時器
   if (timerInterval.value) {
     clearInterval(timerInterval.value)
+  }
+  
+  // 清理進度條計時器
+  if (progressInterval) {
+    clearInterval(progressInterval)
   }
 })
 </script>
@@ -1555,6 +1567,14 @@ onBeforeUnmount(() => {
   background: var(--surface);
   color: var(--text-primary);
 }
+
+/* 意見列表區域 */
+.questions-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
 /* 響應式調整 */
 @media (max-width: 1024px) {
   .host-layout {
@@ -1575,6 +1595,11 @@ onBeforeUnmount(() => {
     flex-direction: column;
     gap: 0.5rem;
   }
-}
 
+  .progress-header {
+    flex-direction: column;
+    gap: 0.5rem;
+    text-align: center;
+  }
+}
 </style>

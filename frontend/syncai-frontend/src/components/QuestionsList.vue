@@ -1,80 +1,96 @@
 <template>
-  <div class="questions-panel">
-    <div class="panel-header">
-      <h2>意見列表 - {{ currentTopicTitle }}</h2>
-      <div class="panel-controls">
-        <select v-model="localSortBy" class="sort-options" @change="updateSortBy">
-          <option value="votes">按票數排序</option>
-          <option value="time">按時間排序</option>
-        </select>
-        <button class="btn-qrcode" id="summary-btn" @click="summaryAI" :title="`統整主題「${currentTopicTitle}」的意見`">
-          AI統整
-        </button>
-        <button class="btn-red btn-qrcode" @click="clearAllQuestions" :title="`清空主題「${currentTopicTitle}」的所有評論`">
-          <i class="fa-solid fa-trash-can"></i>
-          清空評論
-        </button>
-      </div>
-    </div>
-    <div class="questions-container">
-      <template v-if="sortedQuestions.length === 0">
-        <div class="empty-state">
-          <div class="empty-icon">
-            <i class="fa-regular fa-comment-dots"></i>
+  <div class="questions-list-container">
+    <div class="questions-panel">
+      <div class="panel-header">
+        <!-- 第一行：意見列表標題和操作按鈕 -->
+        <div class="header-row">
+          <h2>意見列表 - {{ currentTopicTitle }}</h2>
+          <div class="panel-controls">
+            <select v-model="localSortBy" class="sort-options" @change="updateSortBy">
+              <option value="votes">按票數排序</option>
+              <option value="time">按時間排序</option>
+            </select>
+            <button class="btn-qrcode" id="summary-btn" @click="summaryAI" :title="`統整主題「${currentTopicTitle}」的意見`">
+              AI統整
+            </button>
+            <button class="btn-red btn-qrcode" @click="clearAllQuestions" :title="`清空主題「${currentTopicTitle}」的所有評論`">
+              <i class="fa-solid fa-trash-can"></i>
+              清空評論
+            </button>
           </div>
-          <h3>等待參與者提問</h3>
-          <p>分享會議室代碼讓參與者加入並開始提問</p>
         </div>
-      </template>
-      <template v-else>
-        <div
-          v-for="q in sortedQuestions"
-          :key="q.id"
-          :class="['question-item', { 'ai-summary-item': q.isAISummary }]"
-        >
-          <!-- AI 總結樣式 -->
-          <template v-if="q.isAISummary">
-            <div class="question-header">
-              <div class="question-text">
-                <h3><i class="fa-solid fa-robot"></i> AI 會議總結</h3>
-                <div class="ai-content" v-html="q.content.replace(/\\n/g, '<br>')"></div>
-              </div>
-              <div class="question-actions">
-                <button class="btn-icon" @click="deleteQuestion(q.id)" title="刪除此總結">
-                  <i class="fa-solid fa-trash-can"></i>
-                </button>
-              </div>
+      </div>
+      
+      <div class="questions-container">
+        <!-- 第二行：討論進度條（並排排版） -->
+        <div class="progress-row">
+          <div class="progress-inline">
+            <span class="progress-label">討論進度</span>
+            <div class="progress-bar">
+              <div class="progress-fill" :style="{ width: discussionProgress + '%' }"></div>
             </div>
-            <div class="question-meta">
-              <div class="question-info">
-                <div class="question-time">{{ formatTime(q.ts) }}</div>
-              </div>
+            <span class="progress-percentage">{{ discussionProgress }}%</span>
+          </div>
+        </div>
+        <template v-if="sortedQuestions.length === 0">
+          <div class="empty-state">
+            <div class="empty-icon">
+              <i class="fa-regular fa-comment-dots"></i>
             </div>
-          </template>
+            <h3>等待參與者提問</h3>
+            <p>分享會議室代碼讓參與者加入並開始提問</p>
+          </div>
+        </template>
+        <template v-else>
+          <div
+            v-for="q in sortedQuestions"
+            :key="q.id"
+            :class="['question-item', { 'ai-summary-item': q.isAISummary }]"
+          >
+            <!-- AI 總結樣式 -->
+            <template v-if="q.isAISummary">
+              <div class="question-header">
+                <div class="question-text">
+                  <h3><i class="fa-solid fa-robot"></i> AI 會議總結</h3>
+                  <div class="ai-content" v-html="q.content.replace(/\\n/g, '<br>')"></div>
+                </div>
+                <div class="question-actions">
+                  <button class="btn-icon" @click="deleteQuestion(q.id)" title="刪除此總結">
+                    <i class="fa-solid fa-trash-can"></i>
+                  </button>
+                </div>
+              </div>
+              <div class="question-meta">
+                <div class="question-info">
+                  <div class="question-time">{{ formatTime(q.ts) }}</div>
+                </div>
+              </div>
+            </template>
 
-          <!-- 一般留言樣式 -->
-          <template v-else>
-            <div class="question-header">
-              <div class="question-text" v-html="escapeHtml(q.content)"></div>
-              <div class="question-actions">
-                <button class="btn-icon" @click="deleteQuestion(q.id)" title="刪除意見">
-                  <i class="fa-solid fa-trash-can"></i>
-                </button>
+            <!-- 一般留言樣式 -->
+            <template v-else>
+              <div class="question-header">
+                <div class="question-text" v-html="escapeHtml(q.content)"></div>
+                <div class="question-actions">
+                  <button class="btn-icon" @click="deleteQuestion(q.id)" title="刪除意見">
+                    <i class="fa-solid fa-trash-can"></i>
+                  </button>
+                </div>
               </div>
-            </div>
-            <div class="question-meta">
-              <div class="question-votes">
-                <span class="vote-item"><i class="fa-solid fa-thumbs-up"></i> {{ q.vote_good || 0 }}</span>
-                <span class="vote-item"><i class="fa-solid fa-thumbs-down"></i> {{ q.vote_bad || 0 }}</span>
+              <div class="question-meta">
+                <div class="question-votes">
+                  <span class="vote-item"><i class="fa-solid fa-thumbs-up"></i> {{ q.vote_good || 0 }}</span>
+                  <span class="vote-item"><i class="fa-solid fa-thumbs-down"></i> {{ q.vote_bad || 0 }}</span>
+                </div>
+                <div class="question-info">
+                  <div class="question-nickname" v-if="q.nickname"><i class="fa-regular fa-user"></i> {{ q.nickname }}</div>
+                  <div class="question-time">{{ formatTime(q.ts) }}</div>
+                </div>
               </div>
-              <div class="question-info">
-                <div class="question-nickname" v-if="q.nickname"><i class="fa-regular fa-user"></i> {{ q.nickname }}</div>
-                <div class="question-time">{{ formatTime(q.ts) }}</div>
-              </div>
-            </div>
-          </template>
-        </div>
-      </template>
+            </template>
+          </div>
+        </template>
+      </div>
     </div>
   </div>
 </template>
@@ -94,6 +110,10 @@ const props = defineProps({
   sortBy: {
     type: String,
     required: true
+  },
+  discussionProgress: {  // 新增進度條數據
+    type: Number,
+    default: 89
   }
 })
 
@@ -160,6 +180,12 @@ function escapeHtml(text) {
 </script>
 
 <style scoped>
+.questions-list-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
 .questions-panel {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -170,13 +196,20 @@ function escapeHtml(text) {
 .panel-header {
   padding: 1.3rem;
   border-bottom: 1px solid var(--border);
+  background: var(--background);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* 第一行：標題和控制按鈕 */
+.header-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: var(--background);
 }
 
-.panel-header h2 {
+.header-row h2 {
   font-size: 1.2rem;
   font-weight: 600;
   margin: 0;
@@ -186,6 +219,29 @@ function escapeHtml(text) {
   display: flex;
   gap: 0.75rem;
   align-items: center;
+}
+
+/* 第二行：進度條 */
+.progress-row {
+  width: 100%;
+}
+
+.progress-inline {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+}
+
+.progress-label {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  min-width: fit-content;
 }
 
 .sort-options {
@@ -223,7 +279,7 @@ function escapeHtml(text) {
 }
 
 .questions-container {
-  height: calc(100% - 80px);
+  height: calc(100% - 120px); /* 調整高度以適應兩行標題 */
   overflow-y: auto;
   padding: 1rem;
 }
@@ -376,6 +432,70 @@ function escapeHtml(text) {
   color: var(--primary-color);
 }
 
+/* 討論進度條樣式 */
+.discussion-progress {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem;
+  box-shadow: var(--shadow);
+}
+
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.progress-header h4 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.progress-percentage {
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: var(--primary-color);
+  white-space: nowrap;
+  min-width: fit-content;
+}
+
+.progress-bar {
+  flex: 1;
+  height: 8px;
+  background-color: #e5e7eb;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 0.5rem;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary-color), #3b82f6);
+  border-radius: 4px;
+  transition: width 0.5s ease-in-out;
+  position: relative;
+}
+
+.progress-fill::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
 /* 響應式調整 */
 @media (max-width: 1024px) {
   .questions-container { 
@@ -384,6 +504,39 @@ function escapeHtml(text) {
 }
 
 @media (max-width: 768px) {
+  .panel-header {
+    gap: 0.75rem;
+  }
+  
+  .header-row {
+    flex-direction: column;
+    gap: 0.75rem;
+    align-items: flex-start;
+  }
+  
+  .panel-controls { 
+    flex-direction: column; 
+    gap: 0.5rem; 
+    width: 100%;
+  }
+
+  .progress-inline {
+    gap: 0.75rem;
+    padding: 0.5rem 0.75rem;
+  }
+  
+  .progress-label {
+    font-size: 0.9rem;
+  }
+  
+  .progress-percentage {
+    font-size: 1rem;
+  }
+  
+  .progress-bar {
+    min-width: 80px;
+  }
+  
   .question-meta {
     flex-direction: column;
     align-items: flex-start;
@@ -394,10 +547,19 @@ function escapeHtml(text) {
     align-items: flex-start;
     width: 100%;
   }
+}
 
-  .panel-controls { 
-    flex-direction: column; 
-    gap: 0.5rem; 
+/* 超小螢幕調整 */
+@media (max-width: 480px) {
+  .progress-inline {
+    flex-direction: column;
+    gap: 0.5rem;
+    text-align: center;
+  }
+  
+  .progress-bar {
+    width: 100%;
+    min-width: unset;
   }
 }
 </style>
