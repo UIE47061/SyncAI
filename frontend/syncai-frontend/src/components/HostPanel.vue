@@ -507,11 +507,40 @@ async function generateAndDisplayTopics() {
       await switchTopic(topics.value[0].title)
     }
 
+    // 5. 清理臨時主題（載入狀態和錯誤訊息）
+    try {
+      const cleanResp = await fetch(`${API_BASE_URL}/ai/clean_temp_topics`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ room: roomCode.value })
+      })
+      if (cleanResp.ok) {
+        const cleanData = await cleanResp.json()
+        if (cleanData.success && cleanData.cleaned_topics.length > 0) {
+          console.log(`已清理臨時主題: ${cleanData.cleaned_topics.join(', ')}`)
+        }
+      }
+    } catch (cleanErr) {
+      console.warn('清理臨時主題失敗:', cleanErr)
+      // 清理失敗不影響主流程
+    }
+
   } catch (err) {
     showNotification(err.message, 'error')
     // 如果失敗，還原為預設主題
     topics.value = [{ title: '預設主題', content: '', timestamp: new Date().toISOString() }]
     selectedTopicIndex.value = 0
+    
+    // 即使生成失敗，也嘗試清理可能存在的臨時主題
+    try {
+      await fetch(`${API_BASE_URL}/ai/clean_temp_topics`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ room: roomCode.value })
+      })
+    } catch (cleanErr) {
+      console.warn('清理臨時主題失敗:', cleanErr)
+    }
   }
 }
 
@@ -704,9 +733,57 @@ async function clearAllQuestions() {
   }
 }
 
+// 清理臨時主題的手動功能
+async function cleanTempTopics() {
+  if (!roomCode.value) {
+    showNotification('找不到會議室代碼', 'error')
+    return
+  }
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/ai/clean_temp_topics`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ room: roomCode.value })
+    })
+
+    if (!response.ok) {
+      throw new Error(`清理請求失敗: ${response.status}`)
+    }
+
+    const data = await response.json()
+    
+    if (data.success) {
+      if (data.cleaned_topics.length > 0) {
+        showNotification(`已清理 ${data.cleaned_topics.length} 個臨時主題`, 'success')
+        console.log('清理的主題:', data.cleaned_topics)
+        // 重新載入主題列表
+        await loadRoom()
+      } else {
+        showNotification('沒有找到需要清理的臨時主題', 'info')
+      }
+    } else {
+      showNotification(data.detail || '清理失敗', 'error')
+    }
+  } catch (error) {
+    console.error('清理臨時主題失敗:', error)
+    showNotification('清理臨時主題失敗，請稍後再試', 'error')
+  }
+}
+
+function goToSummary() {
+  router.push({
+    path: '/meeting-summary',
+    query: {
+      room: roomCode.value,
+      title: room.value?.title || '未命名會議'
+    }
+  })
+}
+
 // 會議控制
 async function endRoom() {
-  if (confirm('確定要結束會議嗎？這將關閉房間並退出。')) {
+  if (confirm('確定要結束會議嗎？這將關閉房間並跳轉到結算頁面。')) {
     try {
       // 停止計時器 (如果有運行的話)
       if (timerRunning.value) {
@@ -723,8 +800,20 @@ async function endRoom() {
         saveRoom()
       }
       
-      // showNotification('會議已結束，房間已關閉', 'success')
-      setTimeout(() => {router.push('/');}, 2000)
+      // 顯示結束通知
+      showNotification('會議已結束，正在跳轉到結算頁面...', 'success')
+      
+      // 直接跳轉到結算頁面
+      setTimeout(() => {
+        router.push({
+          path: '/meeting-summary',
+          query: {
+            room: roomCode.value,
+            title: room.value?.title || '未命名會議'
+          }
+        })
+      }, 1000) // 1秒後跳轉，讓用戶看到通知
+      
     } catch (error) {
       console.error('結束會議失敗:', error)
       showNotification('結束會議失敗，請稍後再試', 'error')
@@ -1046,11 +1135,40 @@ async function generateAndReplaceTopic() {
     } else {
       throw new Error(renameResult.detail || '重命名主題失敗')
     }
+
+    // 清理臨時主題
+    try {
+      const cleanResp = await fetch(`${API_BASE_URL}/ai/clean_temp_topics`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ room: roomCode.value })
+      })
+      if (cleanResp.ok) {
+        const cleanData = await cleanResp.json()
+        if (cleanData.success && cleanData.cleaned_topics.length > 0) {
+          console.log(`已清理臨時主題: ${cleanData.cleaned_topics.join(', ')}`)
+        }
+      }
+    } catch (cleanErr) {
+      console.warn('清理臨時主題失敗:', cleanErr)
+    }
+
   } catch (error) {
     console.error('AI 主題生成與替換失敗:', error)
     showNotification(error.message || 'AI 主題生成與替換失敗，請稍後再試', 'error')
     if (topicIndex !== null) {
       topics.value[topicIndex].title = originalTopic
+    }
+    
+    // 即使生成失敗，也嘗試清理可能存在的臨時主題
+    try {
+      await fetch(`${API_BASE_URL}/ai/clean_temp_topics`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ room: roomCode.value })
+      })
+    } catch (cleanErr) {
+      console.warn('清理臨時主題失敗:', cleanErr)
     }
   }
 }
@@ -1123,10 +1241,38 @@ async function createNewTopicWithAI(aiPrompt) {
     await selectTopic(placeholderIndex);
     showNotification(`AI 已生成新主題：「${newTopicName}」`, 'success');
 
+    // 清理臨時主題
+    try {
+      const cleanResp = await fetch(`${API_BASE_URL}/ai/clean_temp_topics`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ room: roomCode.value })
+      })
+      if (cleanResp.ok) {
+        const cleanData = await cleanResp.json()
+        if (cleanData.success && cleanData.cleaned_topics.length > 0) {
+          console.log(`已清理臨時主題: ${cleanData.cleaned_topics.join(', ')}`)
+        }
+      }
+    } catch (cleanErr) {
+      console.warn('清理臨時主題失敗:', cleanErr)
+    }
+
   } catch (error) {
     console.error('AI 新增主題失敗:', error);
     showNotification(error.message, 'error');
     topics.value.splice(placeholderIndex, 1);
+    
+    // 即使生成失敗，也嘗試清理可能存在的臨時主題
+    try {
+      await fetch(`${API_BASE_URL}/ai/clean_temp_topics`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ room: roomCode.value })
+      })
+    } catch (cleanErr) {
+      console.warn('清理臨時主題失敗:', cleanErr)
+    }
   }
 }
 
@@ -1726,6 +1872,7 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 1rem;
   min-height: 500px; /* 設定最小高度 */
+  max-height: calc(100vh - 110px - 24px*2); /* 設定最大高度 */
   height: auto; /* 允許內容撐開 */
   overflow: visible; /* 確保內容不被切掉 */
 }

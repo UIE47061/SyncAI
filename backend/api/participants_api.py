@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 import random, string, time, uuid
 import platform
+import os
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from .utility import export_room_pdf
@@ -89,18 +90,52 @@ def get_chinese_font():
         }
     else:  # Linux and others (常見路徑)
         font_map = {
-            'WenQuanYiMicroHei': '/usr/share/fonts/wenquanyi/wqy-microhei/wqy-microhei.ttc',
-            'NotoSansCJK': '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.otf',
+            # Noto 字體系列 (Google開源字體，支援廣泛)
+            'NotoSansCJK-Regular': '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
+            'NotoSansCJK': '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc',
+            'NotoSansTC': '/usr/share/fonts/opentype/noto/NotoSansTC-Regular.otf',
+            # 文泉驛字體系列
+            'WenQuanYiMicroHei': '/usr/share/fonts/truetype/wqy/wqy-microhei.ttc',
+            'WenQuanYiZenHei': '/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc',
+            # 其他常見位置
+            'WenQuanYiMicroHei-alt': '/usr/share/fonts/wenquanyi/wqy-microhei/wqy-microhei.ttc',
+            'NotoSansCJK-alt': '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.otf',
+            # Debian/Ubuntu 包管理器安裝的字體
+            'DejaVuSans': '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
         }
 
     # 遍歷字典，嘗試註冊第一個找到的字型
     for font_name, font_path in font_map.items():
         try:
             pdfmetrics.registerFont(TTFont(font_name, font_path))
-            print(f"PDF匯出：成功註冊字型 '{font_name}'")
+            print(f"PDF匯出：成功註冊字型 '{font_name}' 從路徑 '{font_path}'")
             return font_name
-        except Exception:
+        except Exception as e:
+            print(f"嘗試註冊字型 '{font_name}' 失敗: {e}")
             continue # 如果找不到或註冊失敗，繼續嘗試下一個
+    
+    # 如果預設路徑都失敗，嘗試使用系統命令查找字體
+    if os_type == 'Linux' or os_type not in ['Darwin', 'Windows']:
+        try:
+            import subprocess
+            # 使用 fc-list 命令查找可用的中文字體
+            result = subprocess.run(['fc-list', ':lang=zh'], capture_output=True, text=True, timeout=5)
+            if result.returncode == 0 and result.stdout:
+                lines = result.stdout.strip().split('\n')
+                for line in lines:
+                    if ':' in line:
+                        font_path = line.split(':')[0].strip()
+                        if font_path.endswith(('.ttf', '.ttc', '.otf')):
+                            try:
+                                font_name = f"SystemFont_{len(font_path)}"  # 使用唯一名稱
+                                pdfmetrics.registerFont(TTFont(font_name, font_path))
+                                print(f"PDF匯出：通過 fc-list 成功註冊字型 '{font_name}' 從路徑 '{font_path}'")
+                                return font_name
+                            except Exception as e:
+                                print(f"fc-list 找到的字體註冊失敗 '{font_path}': {e}")
+                                continue
+        except Exception as e:
+            print(f"使用 fc-list 查找字體時發生錯誤: {e}")
             
     # 如果所有預設字型都找不到，發出警告並使用備用字型
     print("警告：在系統預設路徑中找不到任何可用的中文字型，PDF 中文可能無法正常顯示。")
