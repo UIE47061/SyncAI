@@ -64,7 +64,7 @@ class AllowJoinRequest(BaseModel):
     allow_join: bool
 
 
-router = APIRouter()
+router = APIRouter(tags=["Meeting"])
 
 # --- PDF 匯出設定 (智慧型字型選擇) ---
 def get_chinese_font():
