@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import json, random, time
-from typing import List
+from typing import List, Optional
 from .participants_api import ROOMS, topics, votes
 from .ai_config import ai_config
 from .ai_client import ai_client
@@ -143,6 +143,7 @@ class GenerateTopicsRequest(BaseModel):
     """用於 AI 生成主題請求的模型"""
     meeting_title: str
     topic_count: int
+    room_code: Optional[str] = None  # 可選的會議代碼，如果提供則使用會議專屬workspace
 
 @router.post("/generate_topics")
 async def generate_ai_topics(req: GenerateTopicsRequest):
@@ -168,9 +169,26 @@ async def generate_ai_topics(req: GenerateTopicsRequest):
 
     # 呼叫 AnythingLLM API
     try:
-        # 為會議創建專用工作區（使用會議標題作為唯一識別）
-        room_code = f"topics-{hash(meeting_title) % 10000}"  # 生成基於標題的唯一代碼
-        workspace_slug = await ai_client.ensure_workspace_exists(room_code, meeting_title)
+        # 優先使用會議專屬workspace，如果沒有提供room_code則創建臨時workspace
+        if req.room_code and req.room_code in ROOMS:
+            # 使用真實會議的專屬workspace
+            room_data = ROOMS[req.room_code]
+            workspace_slug = room_data.get('workspace_slug')
+            if not workspace_slug:
+                print(f"⚠️ 會議 {req.room_code} 沒有預設workspace，正在創建...")
+                workspace_slug = await ai_client.ensure_workspace_exists(req.room_code, meeting_title)
+                # 更新會議數據
+                ROOMS[req.room_code]['workspace_slug'] = workspace_slug
+                workspace_info = await ai_client.get_workspace_info(workspace_slug)
+                if workspace_info and "id" in workspace_info:
+                    ROOMS[req.room_code]['workspace_id'] = workspace_info["id"]
+            else:
+                print(f"✅ 使用會議專屬workspace: {workspace_slug}")
+        else:
+            # 備選方案：為獨立的主題生成創建臨時workspace
+            print(f"📝 為獨立主題生成創建臨時workspace...")
+            temp_room_code = f"topics-{hash(meeting_title) % 10000}"
+            workspace_slug = await ai_client.ensure_workspace_exists(temp_room_code, meeting_title)
         
         generated_topics = await _generate_topics_from_title(meeting_title, topic_count, workspace_slug)
         return {"topics": generated_topics}
