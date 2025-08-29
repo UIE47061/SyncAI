@@ -15,7 +15,7 @@ services:
     environment:
       - PYTHONPATH=/app
       - ANYTHINGLLM_BASE_URL=http://host.docker.internal:3001
-      - ANYTHINGLLM_API_KEY=GVM12N3-WPHMQ0X-PAY5ZV9-T8BGJTP
+      - ANYTHINGLLM_API_KEY=9NRCY7R-R5N4JC5-QYKN559-TMJX9SH
       - ANYTHINGLLM_WORKSPACE_SLUG=mac
     command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
     restart: unless-stopped
