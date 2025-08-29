@@ -1,5 +1,5 @@
 #!/bin/bash
-# SyncAI 模型下載腳本
+# MBBuddy 模型下載腳本
 # 此腳本會自動下載所需的 AI 模型檔案
 
 set -e  # 遇到錯誤時停止執行
@@ -12,13 +12,13 @@ MODEL_FILE="mistral-7b-instruct-v0.2.Q5_K_M.gguf"
 MODEL_URL="https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/mistral-7b-instruct-v0.2.Q5_K_M.gguf"
 EXPECTED_SIZE="5131409696"  # 約 5.1GB
 
-echo "🤖 SyncAI 模型下載工具"
+echo "🤖 MBBuddy 模型下載工具"
 echo "================================"
 
 # 檢查目錄是否存在
 if [ ! -d "$MODEL_DIR" ]; then
     echo "❌ 錯誤：找不到 $MODEL_DIR 目錄"
-    echo "請確保您在 SyncAI 專案根目錄或 scripts 目錄下執行此腳本"
+    echo "請確保您在 MBBuddy 專案根目錄或 scripts 目錄下執行此腳本"
     exit 1
 fi
 
@@ -79,7 +79,7 @@ if [ -f "$MODEL_FILE" ]; then
     echo "📊 檔案資訊："
     ls -lh "$MODEL_FILE"
     echo ""
-    echo "🚀 現在您可以啟動 SyncAI："
+    echo "🚀 現在您可以啟動 MBBuddy："
     echo "   docker-compose -f docker/docker-compose.yml up -d"
 else
     echo "❌ 下載失敗，請檢查網路連線或手動下載"

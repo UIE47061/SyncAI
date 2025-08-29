@@ -4,8 +4,8 @@
     <nav class="navbar">
       <div class="nav-container">
         <div class="nav-brand" @click="router.push('/')" aria-label="返回主頁">
-          <img src="/icon.png" alt="SyncAI" class="brand-icon" />
-          <h1>SyncAI</h1>
+          <img src="/icon.png" alt="MBBuddy" class="brand-icon" />
+          <h1>MBBuddy</h1>
           <span>主持人面板</span>
         </div>
         <div class="nav-actions">
@@ -473,7 +473,7 @@ async function summaryAI() {
         },
         body: JSON.stringify({ 
           content: data.summary,
-          nickname: "SyncAI 小助手",
+          nickname: "MBBuddy 小助手",
           isAISummary: true
         })
       });
@@ -1002,7 +1002,7 @@ async function exportAllTopics() {
     
     // 從 Content-Disposition header 獲取檔名
     const contentDisposition = response.headers.get('Content-Disposition')
-    let filename = `SyncAI-Report-${roomCode.value}.pdf`
+    let filename = `MBBuddy-Report-${roomCode.value}.pdf`
     if (contentDisposition) {
       const filenameMatch = contentDisposition.match(/filename="?(.+)"?/)
       if (filenameMatch && filenameMatch.length > 1) {

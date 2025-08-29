@@ -1,5 +1,5 @@
 #!/bin/bash
-# SyncAI 本地開發服務啟動腳本 (macOS/Linux)
+# MBBuddy 本地開發服務啟動腳本 (macOS/Linux)
 
 set -e
 
@@ -7,7 +7,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-echo "🚀 啟動 SyncAI 本地開發服務"
+echo "🚀 啟動 MBBuddy 本地開發服務"
 echo "================================"
 
 # 切換到專案根目錄
@@ -15,7 +15,7 @@ cd "$PROJECT_ROOT"
 
 # 檢查是否在專案根目錄
 if [ ! -f "package.json" ] || [ ! -d "backend" ] || [ ! -d "frontend" ]; then
-    echo "❌ 錯誤：無法找到 SyncAI 專案結構"
+    echo "❌ 錯誤：無法找到 MBBuddy 專案結構"
     echo "當前目錄：$(pwd)"
     exit 1
 fi

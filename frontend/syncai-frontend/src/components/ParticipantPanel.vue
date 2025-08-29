@@ -4,8 +4,8 @@
     <nav class="navbar">
       <div class="nav-container">
         <div class="nav-brand" @click="goHome" aria-label="返回主頁">
-          <img src="/icon.png" alt="SyncAI" class="brand-icon" />
-          <h1>SyncAI</h1>
+          <img src="/icon.png" alt="MBBuddy" class="brand-icon" />
+          <h1>MBBuddy</h1>
           <span>參與者</span>
         </div>
         <div class="nav-actions">

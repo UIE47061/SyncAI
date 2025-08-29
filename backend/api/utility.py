@@ -53,7 +53,7 @@ def export_room_pdf(room, room_data, room_topics, votes, FONT_NAME):
 
     def footer(canvas, doc):
         canvas.saveState()
-        footer_text = f"SyncAI 會議系統產生於 {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')} | 會議代碼: {room}"
+        footer_text = f"MBBuddy 會議系統產生於 {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')} | 會議代碼: {room}"
         p = Paragraph(footer_text, styles["FooterStyle"])
         w, h = p.wrap(doc.width, doc.bottomMargin)
         p.drawOn(canvas, doc.leftMargin, h)
@@ -79,7 +79,7 @@ def export_room_pdf(room, room_data, room_topics, votes, FONT_NAME):
         story.append(Paragraph("此會議尚未創建任何主題。", styles['BodyStyle']))
         doc.build(story, onFirstPage=footer, onLaterPages=footer)
         buffer.seek(0)
-        encoded_filename = quote(room_data.get('title', f'SyncAI-Report-{room}'))
+        encoded_filename = quote(room_data.get('title', f'MBBuddy-Report-{room}'))
         return StreamingResponse(buffer, media_type='application/pdf', headers={
             'Content-Disposition': f"attachment; filename*=UTF-8''{encoded_filename}.pdf"
         })
@@ -287,7 +287,7 @@ def export_room_pdf(room, room_data, room_topics, votes, FONT_NAME):
     # 最後產生 PDF
     doc.build(story, onFirstPage=footer, onLaterPages=footer)
     buffer.seek(0)
-    meeting_title = room_data.get('title', f'SyncAI-Report-{room}')
+    meeting_title = room_data.get('title', f'MBBuddy-Report-{room}')
     encoded_filename = quote(meeting_title)
     return StreamingResponse(buffer, media_type='application/pdf', headers={
         'Content-Disposition': f"attachment; filename*=UTF-8''{encoded_filename}.pdf",

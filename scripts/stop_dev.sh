@@ -1,11 +1,11 @@
 #!/bin/bash
-# SyncAI 本地開發服務停止腳本 (macOS/Linux)
+# MBBuddy 本地開發服務停止腳本 (macOS/Linux)
 
 # 獲取腳本所在目錄的父目錄（專案根目錄）
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-echo "🛑 停止 SyncAI 本地開發服務"
+echo "🛑 停止 MBBuddy 本地開發服務"
 echo "================================"
 
 # 切換到專案根目錄

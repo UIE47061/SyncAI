@@ -1,8 +1,8 @@
-# SyncAI Meeting
+# MBBuddy Meeting
 
 ## 📱 應用程式說明
 
-**SyncAI** 是一款專為「內部會議協作」打造的本地私有化 AI 互動平台，整合了匿名意見收集、即時投票、AI 智能助理及自動統整等功能，提供全新的會議互動體驗。
+**MBBuddy** 是一款專為「內部會議協作」打造的本地私有化 AI 互動平台，整合了匿名意見收集、即時投票、AI 智能助理及自動統整等功能，提供全新的會議互動體驗。
 
 ### 核心特色：
 
@@ -34,8 +34,8 @@
 ### 1. 下載專案
 
 ```bash
-git clone https://github.com/UIE47061/SyncAI.git
-cd SyncAI
+git clone https://github.com/UIE47061/MBBuddy.git
+cd MBBuddy
 ```
 
 ### 2. 準備 AI 模型
@@ -216,7 +216,7 @@ scripts\stop_dev.bat
 
 ## 📂 目錄結構
 ```
-SyncAI/
+MBBuddy/
 ├── 📁 ai_models/                    # AI 模型檔案目錄
 │   ├── mistral-7b-instruct-v0.2.Q5_K_M.gguf  # Mistral 7B 模型（需下載）
 │   └── test_llama_python.py         # 模型測試腳本
@@ -346,8 +346,8 @@ chmod 644 ai_models/mistral-7b-instruct-v0.2.Q5_K_M.gguf
 **Docker 部署：**
 ```bash
 # 1. Clone 專案
-git clone https://github.com/UIE47061/SyncAI.git
-cd SyncAI
+git clone https://github.com/UIE47061/MBBuddy.git
+cd MBBuddy
 
 # 2. 下載模型（必須步驟）
 scripts/download_model.sh        # macOS/Linux
@@ -361,8 +361,8 @@ docker-compose -f docker/docker-compose.yml up -d
 **本地開發：**
 ```bash
 # 1. Clone 專案
-git clone https://github.com/UIE47061/SyncAI.git
-cd SyncAI
+git clone https://github.com/UIE47061/MBBuddy.git
+cd MBBuddy
 
 # 2. 下載模型
 scripts/download_model.sh        # macOS/Linux
@@ -379,7 +379,7 @@ scripts/start_dev.sh             # macOS/Linux
 
 ### 檔案結構確認：
 ```
-SyncAI/
+MBBuddy/
 ├── ai_models/
 │   └── mistral-7b-instruct-v0.2.Q5_K_M.gguf  # 必須存在
 ├── docker/
