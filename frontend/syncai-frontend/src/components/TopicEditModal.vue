@@ -59,7 +59,7 @@
 </template>
 
 <script setup>
-import { defineProps, defineEmits, ref, watch, nextTick } from 'vue'
+import { ref, watch, nextTick } from 'vue'
 
 const props = defineProps({
   isVisible: {

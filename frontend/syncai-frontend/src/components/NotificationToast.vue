@@ -13,7 +13,7 @@
 </template>
 
 <script setup>
-import { defineProps, defineEmits } from 'vue'
+// defineProps 和 defineEmits 是编译器宏，无需导入
 
 const props = defineProps({
   notifications: {
