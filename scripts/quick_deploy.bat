@@ -28,35 +28,6 @@ if not exist "frontend" goto :error_dir
 echo [SUCCESS] Project directory confirmed
 
 REM =====================================
-REM Prepare AI Model
-REM =====================================
-echo.
-echo [INFO] Checking AI model...
-
-set "MODEL_DIR=%PROJECT_ROOT%\ai_models"
-set "MODEL_FILE=mistral-7b-instruct-v0.2.Q5_K_M.gguf"
-set "MODEL_PATH=%MODEL_DIR%\%MODEL_FILE%"
-
-if exist "%MODEL_PATH%" (
-    echo [INFO] Checking existing model file...
-    for %%F in ("%MODEL_PATH%") do (
-        if %%~zF GTR 5000000000 (
-            echo [SUCCESS] AI model exists and is complete
-            goto :check_docker
-        )
-    )
-)
-
-echo [INFO] Need to download AI model, calling download script...
-call "%SCRIPT_DIR%download_model.bat"
-if %errorlevel% neq 0 (
-    echo [ERROR] Model download failed
-    pause
-    exit /b 1
-)
-
-:check_docker
-REM =====================================
 REM Check Docker
 REM =====================================
 echo.
@@ -64,9 +35,17 @@ echo [INFO] Checking Docker...
 
 docker --version >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [ERROR] Docker not installed, please install Docker Desktop first
+    echo [WARNING] Docker not installed
+    echo [INFO] Attempting to install Docker automatically...
+    call "%SCRIPT_DIR%install_docker.bat"
+    if %errorlevel% neq 0 (
+        echo [ERROR] Docker installation failed, please install Docker Desktop first
+        pause
+        exit /b 1
+    )
+    echo [INFO] Please restart your computer and run this script again
     pause
-    exit /b 1
+    exit /b 0
 )
 
 docker info >nul 2>&1
