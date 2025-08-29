@@ -704,9 +704,19 @@ async function clearAllQuestions() {
   }
 }
 
+function goToSummary() {
+  router.push({
+    path: '/meeting-summary',
+    query: {
+      room: roomCode.value,
+      title: room.value?.title || '未命名會議'
+    }
+  })
+}
+
 // 會議控制
 async function endRoom() {
-  if (confirm('確定要結束會議嗎？這將關閉房間並退出。')) {
+  if (confirm('確定要結束會議嗎？這將關閉房間並跳轉到結算頁面。')) {
     try {
       // 停止計時器 (如果有運行的話)
       if (timerRunning.value) {
@@ -723,8 +733,20 @@ async function endRoom() {
         saveRoom()
       }
       
-      // showNotification('會議已結束，房間已關閉', 'success')
-      setTimeout(() => {router.push('/');}, 2000)
+      // 顯示結束通知
+      showNotification('會議已結束，正在跳轉到結算頁面...', 'success')
+      
+      // 直接跳轉到結算頁面
+      setTimeout(() => {
+        router.push({
+          path: '/meeting-summary',
+          query: {
+            room: roomCode.value,
+            title: room.value?.title || '未命名會議'
+          }
+        })
+      }, 1000) // 1秒後跳轉，讓用戶看到通知
+      
     } catch (error) {
       console.error('結束會議失敗:', error)
       showNotification('結束會議失敗，請稍後再試', 'error')
