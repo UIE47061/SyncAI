@@ -4,12 +4,21 @@ FROM python:3.11-slim
 # 設定工作目錄
 WORKDIR /app
 
-# 安裝系統依賴
+# 安裝系統依賴和中文字體
 RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
     libopenblas-dev \
     pkg-config \
+    libfreetype6-dev \
+    libpng-dev \
+    libjpeg-dev \
+    fonts-noto-cjk \
+    fonts-noto-cjk-extra \
+    fonts-wqy-microhei \
+    fonts-wqy-zenhei \
+    fontconfig \
+    && fc-cache -fv \
     && rm -rf /var/lib/apt/lists/*
 
 # 複製 requirements 並安裝 Python 依賴

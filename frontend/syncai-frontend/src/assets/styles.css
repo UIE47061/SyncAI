@@ -70,11 +70,18 @@ body {
     margin-left: 5px;
 }
 
-/* 全站品牌圖示（放在 public/icon.png） */
 .brand-icon {
-    width: 28px;
-    height: 28px;
+    width: 100px;
+    height: auto;
     display: inline-block;
+    object-fit: contain;
+}
+
+/* 手機版調整 */
+@media (max-width: 768px) {
+    .brand-icon {
+        width: 80px; /* 手機上稍小一點 */
+    }
 }
 
 .nav-actions {
@@ -143,7 +150,7 @@ body {
     font-size: 2.5rem;
     font-weight: 700;
     margin-bottom: 1rem;
-    background: linear-gradient(135deg, var(--primary-color), #7c3aed);
+    background: linear-gradient(135deg, #2563eb, #fff);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;

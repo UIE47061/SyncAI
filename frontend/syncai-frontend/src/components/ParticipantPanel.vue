@@ -4,8 +4,8 @@
     <nav class="navbar">
       <div class="nav-container">
         <div class="nav-brand" @click="goHome" aria-label="返回主頁">
-          <img src="/icon.png" alt="SyncAI" class="brand-icon" />
-          <h1>SyncAI</h1>
+          <img src="/icon.png" alt="MBBuddy" class="brand-icon" />
+          <!-- <h1>MBBuddy</h1> -->
           <span>參與者</span>
         </div>
         <div class="nav-actions">
@@ -58,7 +58,7 @@
             <div class="empty-text">目前還沒有意見。</div>
           </div>
           <div v-else class="question-list">
-            <div v-for="q in questions" :key="q.id" class="question-item" :class="{ 'ai-summary-message': q.isAISummary }">
+            <div v-for="q in questions.slice().reverse()" :key="q.id" class="question-item" :class="{ 'ai-summary-message': q.isAISummary }">
               <div class="question-header">
                 <div class="question-meta">
                   <div class="meta-item" v-if="q.nickname"><i class="meta-icon fa-regular fa-user"></i><span>{{ q.nickname }}</span></div>

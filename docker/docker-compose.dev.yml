@@ -10,9 +10,13 @@ services:
       - "0.0.0.0:8001:8000"
     volumes:
       - ../backend:/app/backend
-      - ../ai_models:/app/ai_models
+      - ../frontend/syncai-frontend/public:/app/frontend/syncai-frontend/public
+      # - ../ai_models:/app/ai_models  # 已移除本地模型目錄掛載
     environment:
       - PYTHONPATH=/app
+      - ANYTHINGLLM_BASE_URL=http://host.docker.internal:3001
+      - ANYTHINGLLM_API_KEY=9NRCY7R-R5N4JC5-QYKN559-TMJX9SH
+      - ANYTHINGLLM_WORKSPACE_SLUG=mac
     command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
     restart: unless-stopped
     networks:

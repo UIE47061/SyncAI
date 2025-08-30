@@ -2,13 +2,13 @@
   <div class="modal" :class="{ active: visible }" @click.self="close">
     <div class="modal-content">
       <div class="modal-header">
-        <h3>建立新會議室</h3>
+        <h3>建立新討論室</h3>
         <button class="modal-close" @click="close">&times;</button>
       </div>
       <form class="modal-form" @submit.prevent="submitForm">
         <div class="form-group">
-          <label for="roomTitle">會議室名稱</label>
-          <input type="text" id="roomTitle" v-model="form.title" required placeholder="請輸入「會議室名稱」" />
+          <label for="roomTitle">討論室名稱</label>
+          <input type="text" id="roomTitle" v-model="form.title" required placeholder="請輸入「討論室名稱」" />
         </div>
         <div class="form-group">
           <label for="topic">題目</label>
@@ -43,7 +43,7 @@
         <div class="form-actions">
           <button type="button" class="btn btn-outline" @click="close">取消</button>
           <button type="submit" class="btn btn-primary" :disabled="isSubmitting">
-            {{ isSubmitting ? '建立中...' : '建立會議室' }}
+            {{ isSubmitting ? '建立中...' : '建立討論室' }}
           </button>
         </div>
       </form>
@@ -101,7 +101,7 @@ function close() {
 
 async function submitForm() {
   if (!form.title.trim()) {
-    emit('show-notification', { text: '請填寫會議室名稱', type: 'error' });
+    emit('show-notification', { text: '請填寫討論室名稱', type: 'error' });
     return;
   }
   isSubmitting.value = true;
@@ -127,7 +127,7 @@ async function submitForm() {
 
     if (!resp.ok) {
       const errorData = await resp.json().catch(() => ({}));
-      throw new Error(`建立會議室失敗: ${errorData.detail || '請檢查後端日誌'}`);
+      throw new Error(`建立討論室失敗: ${errorData.detail || '請檢查後端日誌'}`);
     }
     const roomData = await resp.json();
     emit('create-success', roomData);
