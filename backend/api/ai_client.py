@@ -51,11 +51,11 @@ class AIClient:
     
     async def ensure_workspace_exists(self, room_code: str, room_title: str) -> str:
         """
-        確保指定會議室的工作區存在，如果不存在則創建
+        確保指定討論室的工作區存在，如果不存在則創建
         
         Args:
-            room_code: 會議室代碼
-            room_title: 會議室名稱
+            room_code: 討論室代碼
+            room_title: 討論室名稱
         
         Returns:
             工作區的slug
@@ -66,7 +66,7 @@ class AIClient:
         if not self.config.api_key:
             raise HTTPException(status_code=500, detail="未配置 AnythingLLM API Key")
         
-        # 生成工作區slug（使用會議室代碼，確保唯一性）
+        # 生成工作區slug（使用討論室代碼，確保唯一性）
         workspace_slug = f"syncai-{room_code.lower()}"
         
         try:
@@ -108,7 +108,7 @@ class AIClient:
                 if "workspace" in result:
                     created_workspace = result["workspace"]
                     created_slug = created_workspace.get("slug", workspace_slug)
-                    print(f"成功創建工作區 '{created_slug}' (ID: {created_workspace.get('id')}) 用於會議: {room_title}")
+                    print(f"成功創建工作區 '{created_slug}' (ID: {created_workspace.get('id')}) 用於討論: {room_title}")
                     print(f"響應訊息: {result.get('message', 'Workspace created')}")
                     return created_slug
                 else:

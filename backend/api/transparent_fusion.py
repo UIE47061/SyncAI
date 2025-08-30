@@ -252,7 +252,7 @@ class TransparentFusionEngine:
         """根據任務類型構建融合提示詞"""
         
         if task_type == "summary":
-            return f"""請基於以下兩個會議摘要，生成一個更完整準確的最終摘要：
+            return f"""請基於以下兩個討論摘要，生成一個更完整準確的最終摘要：
 
 摘要需求：{question}
 
@@ -263,7 +263,7 @@ class TransparentFusionEngine:
 請整合兩個摘要中的所有重要信息，確保涵蓋所有要點，並按邏輯順序組織。直接給出最終摘要："""
 
         elif task_type == "topic_generation":
-            return f"""基於以下兩組會議主題建議，請生成一個更完整多樣的最終主題列表：
+            return f"""基於以下兩組討論主題建議，請生成一個更完整多樣的最終主題列表：
 
 需求：{question}
 

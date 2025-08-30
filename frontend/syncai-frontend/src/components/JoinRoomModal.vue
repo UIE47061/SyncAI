@@ -2,12 +2,12 @@
   <div class="modal" :class="{ active: visible }" @click.self="close">
     <div class="modal-content modal-large">
       <div class="modal-header">
-        <h3>加入會議室</h3>
+        <h3>加入討論室</h3>
         <button class="modal-close" @click="close">&times;</button>
       </div>
       <div class="room-list-container">
         <div class="filter-section">
-          <label>篩選會議室狀態：</label>
+          <label>篩選討論室狀態：</label>
           <div class="filter-buttons">
             <button v-for="filter in filters" :key="filter.value" type="button"
               :class="['filter-btn', { active: selectedFilter === filter.value }]" @click="selectedFilter = filter.value">
@@ -17,7 +17,7 @@
         </div>
         <div class="room-list">
           <div class="room-list-header">
-            <span>會議室標題</span>
+            <span>討論室標題</span>
             <span>狀態</span>
             <span>參與人數</span>
             <span>建立時間</span>
@@ -31,11 +31,11 @@
             </div>
             <div v-if="selectedRoom?.code === room.code" class="room-join-form">
               <div class="join-form-content">
-                <h4><i class="fas fa-sign-in-alt"></i> 加入會議室：{{ selectedRoom.title }}</h4>
+                <h4><i class="fas fa-sign-in-alt"></i> 加入討論室：{{ selectedRoom.title }}</h4>
                 <form @submit.prevent="joinSelectedRoom" class="inline-join-form">
                   <div class="form-row">
                     <div class="form-group">
-                      <label for="roomCode">請輸入會議室代碼確認加入</label>
+                      <label for="roomCode">請輸入討論室代碼確認加入</label>
                       <input type="text" id="roomCode" v-model="joinCode" required placeholder="輸入 6 位數代碼"
                         maxlength="6" class="join-input" />
                     </div>
@@ -53,7 +53,7 @@
             </div>
           </div>
           <div v-if="filteredRooms.length === 0" class="no-rooms">
-            沒有找到符合條件的會議室
+            沒有找到符合條件的討論室
           </div>
         </div>
       </div>
@@ -110,10 +110,10 @@ function close() {
 async function loadRooms() {
   try {
     const resp = await fetch(`${API_BASE}/api/rooms`);
-    if (!resp.ok) throw new Error('無法載入會議室列表');
+    if (!resp.ok) throw new Error('無法載入討論室列表');
     rooms.value = (await resp.json()).rooms || [];
   } catch (err) {
-    emit('show-notification', { text: '載入會議室列表失敗', type: 'error' });
+    emit('show-notification', { text: '載入討論室列表失敗', type: 'error' });
   }
 }
 
@@ -131,28 +131,28 @@ function selectRoom(room) {
 async function joinSelectedRoom() {
   const code = joinCode.value.trim().toUpperCase();
   if (code !== selectedRoom.value.code) {
-    emit('show-notification', { text: '輸入的代碼與選擇的會議室不符', type: 'error' });
+    emit('show-notification', { text: '輸入的代碼與選擇的討論室不符', type: 'error' });
     return;
   }
   if (!code || code.length !== 6) {
-    emit('show-notification', { text: '請輸入有效的 6 位數會議室代碼', type: 'error' });
+    emit('show-notification', { text: '請輸入有效的 6 位數討論室代碼', type: 'error' });
     return;
   }
   try {
     const resp = await fetch(`${API_BASE}/api/room_status?room=${code}`);
     const data = await resp.json();
     if (data.status === "NotFound") {
-      emit('show-notification', { text: '找不到該會議室', type: 'error' });
+      emit('show-notification', { text: '找不到該討論室', type: 'error' });
       return;
     }
     if (data.status === "End") {
-      emit('show-notification', { text: '該會議室已結束', type: 'error' });
+      emit('show-notification', { text: '該討論室已結束', type: 'error' });
       return;
     }
     emit('join-success', code);
     close();
   } catch (e) {
-    emit('show-notification', { text: '加入會議室失敗', type: 'error' });
+    emit('show-notification', { text: '加入討論室失敗', type: 'error' });
   }
 }
 

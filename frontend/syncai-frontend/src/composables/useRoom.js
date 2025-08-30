@@ -70,7 +70,7 @@ export function useRoom() {
     } catch (error) {
       roomStatus.value = 'NotFound';
       clearAllPolling();
-      showNotification('會議不存在或已結束', 'error');
+      showNotification('討論不存在或已結束', 'error');
       setTimeout(goHome, 3000);
       return 'NotFound';
     }

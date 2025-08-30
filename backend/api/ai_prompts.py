@@ -14,23 +14,23 @@ class PromptBuilder:
     @staticmethod
     def build_summary_prompt(room: str, topic: str) -> str:
         """
-        構建會議總結的 prompt
+        構建討論總結的 prompt
         
         Args:
-            room: 會議室代碼
+            room: 討論室代碼
             topic: 要總結的主題名稱
         
         Returns:
             構建好的 prompt 字串
         """
-        # 檢查會議室是否存在
+        # 檢查討論室是否存在
         if room not in ROOMS:
-            return "錯誤：找不到指定的會議室。"
+            return "錯誤：找不到指定的討論室。"
 
         # 組合主題 ID 並檢查主題是否存在
         topic_id = f"{room}_{topic}"
         if topic_id not in topics:
-            return "錯誤：在該會議室中找不到指定的主題。"
+            return "錯誤：在該討論室中找不到指定的主題。"
 
         room_data = ROOMS[room]
         topic_data = topics[topic_id]
@@ -69,7 +69,7 @@ class PromptBuilder:
         # 加上固定的指令模板
         prompt += """
 
-                    你的任務是擔任一個專業的會議記錄員。
+                    你的任務是擔任一個專業的討論記錄員。
                     你必須嚴格根據上方提供的「留言與票數」資訊，進行條列式彙整。
                     禁止臆測或生成任何未在資料中出現的數字、名稱或觀點。
                     你的回答內容，只能包含彙整後的結果，禁止加入任何開場白、問候語或結尾的免責聲明。
@@ -87,7 +87,7 @@ class PromptBuilder:
                     - 可能決議：
                     ---
                     總結：
-                    [此處條列會議的最重要共識或後續追蹤事項]
+                    [此處條列討論的最重要共識或後續追蹤事項]
                 """
 
         return prompt
@@ -98,7 +98,7 @@ class PromptBuilder:
         構建主題生成的 prompt
         
         Args:
-            meeting_title: 會議標題
+            meeting_title: 討論標題
             topic_count: 要生成的主題數量
         
         Returns:
@@ -108,9 +108,9 @@ class PromptBuilder:
         meeting_title = meeting_title.strip()
 
         if not meeting_title:
-            return "錯誤：會議名稱不可為空。"
+            return "錯誤：討論名稱不可為空。"
 
-        prompt = f"""請為「{meeting_title}」會議設計 {topic_count} 個討論主題。
+        prompt = f"""請為「{meeting_title}」討論設計 {topic_count} 個討論主題。
 
 要求：
 - 主題與「{meeting_title}」直接相關  
@@ -130,25 +130,25 @@ class PromptBuilder:
         構建單個主題生成的 prompt
         
         Args:
-            room: 會議室代碼
+            room: 討論室代碼
             custom_prompt: 自訂提示語句
         
         Returns:
             構建好的 prompt 字串
         """
-        # 檢查會議室是否存在
+        # 檢查討論室是否存在
         if room not in ROOMS:
-            return "錯誤：找不到指定的會議室。"
+            return "錯誤：找不到指定的討論室。"
 
         room_data = ROOMS[room]
 
         # 開始建立 Prompt
-        prompt = f"會議名稱: {room_data.get('title', '未命名會議')}\n"
-        prompt += f"會議代碼: {room}\n"
+        prompt = f"討論名稱: {room_data.get('title', '未命名討論')}\n"
+        prompt += f"討論代碼: {room}\n"
         
-        # 添加會議描述/摘要（如果有）
+        # 添加討論描述/摘要（如果有）
         if room_data.get('topic_summary'):
-            prompt += f"會議摘要: {room_data['topic_summary']}\n"
+            prompt += f"討論摘要: {room_data['topic_summary']}\n"
         if room_data.get('desired_outcome'):
             prompt += f"預期成果: {room_data['desired_outcome']}\n"
         
@@ -157,7 +157,7 @@ class PromptBuilder:
         if participants:
             prompt += f"參與者: {', '.join(participants)}\n"
         
-        # 找出該會議室的所有已有主題
+        # 找出該討論室的所有已有主題
         existing_topics = [
             t["topic_name"] for t_id, t in topics.items() 
             if t["room_id"] == room and "topic_name" in t
@@ -168,9 +168,9 @@ class PromptBuilder:
             for i, topic_name in enumerate(existing_topics, 1):
                 prompt += f"{i}. {topic_name}\n"
             
-            prompt += "\n請生成一個與已有主題互補但不重複的新議程主題。主題應該既要與會議整體目標相關，又能夠覆蓋尚未討論的重要方面。"
+            prompt += "\n請生成一個與已有主題互補但不重複的新議程主題。主題應該既要與討論整體目標相關，又能夠覆蓋尚未討論的重要方面。"
         else:
-            prompt += "\n目前會議尚未有任何主題。請生成一個適合作為第一個討論主題的議程。"
+            prompt += "\n目前討論尚未有任何主題。請生成一個適合作為第一個討論主題的議程。"
 
         # 加上使用者自訂的提示
         if custom_prompt:
@@ -286,7 +286,7 @@ class TopicParser:
                 # 過濾掉明顯的無效主題
                 invalid_topics = [
                     'json', '範例', '例如', '格式', 'example',
-                    '請回答', '主題', '討論', '會議', '生成',
+                    '請回答', '主題', '討論', '討論', '生成',
                     '主題一', '主題二', '主題三', '主題1', '主題2', '主題3'
                 ]
                 

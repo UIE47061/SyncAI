@@ -207,15 +207,15 @@ class RoomCreate(BaseModel):
 @router.post("/api/create_room")
 async def create_room(room: RoomCreate):
     """
-    建立會議室
+    建立討論室
 
     [POST] /api/create_room
 
     描述：
-    建立一個新的會議室。
+    建立一個新的討論室。
 
     參數：
-    - room.title (str): 會議室標題
+    - room.title (str): 討論室標題
     - room.topics (List[str]): 主題名稱列表
     - room.topic_summary (str, 選填): 題目摘要資訊
     - room.desired_outcome (str, 選填): 想達到效果
@@ -249,11 +249,11 @@ async def create_room(room: RoomCreate):
         "topic_summary": (room.topic_summary or "").strip(),
         "desired_outcome": (room.desired_outcome or "").strip(),
         "topic_count": room.topic_count, # 使用前端傳來的值
-        "workspace_slug": None,  # 會議專屬的workspace slug
-        "workspace_id": None,    # 會議專屬的workspace id
+        "workspace_slug": None,  # 討論專屬的workspace slug
+        "workspace_id": None,    # 討論專屬的workspace id
     }
     
-    # 立即為此會議創建專屬的workspace
+    # 立即為此討論創建專屬的workspace
     try:
         workspace_slug = await ai_client.ensure_workspace_exists(code, title)
         # 從AnythingLLM API獲取workspace詳細信息包括ID
@@ -263,10 +263,10 @@ async def create_room(room: RoomCreate):
         if workspace_info and "id" in workspace_info:
             ROOMS[code]["workspace_id"] = workspace_info["id"]
         
-        print(f"✅ 會議 '{title}' (代碼: {code}) 的專屬workspace已創建: {workspace_slug}")
+        print(f"✅ 討論 '{title}' (代碼: {code}) 的專屬workspace已創建: {workspace_slug}")
     except Exception as e:
-        print(f"⚠️ 為會議 '{title}' 創建workspace時發生錯誤: {e}")
-        # 不影響會議創建，workspace可以稍後創建
+        print(f"⚠️ 為討論 '{title}' 創建workspace時發生錯誤: {e}")
+        # 不影響討論創建，workspace可以稍後創建
         pass
     
     for topic_name in room_topics:
@@ -290,10 +290,10 @@ async def create_room(room: RoomCreate):
 @router.get("/api/export_pdf")
 def export_pdf(room: str):
     """
-    匯出指定會議室的完整記錄為 PDF 檔案，帶有美化排版和圖表。
+    匯出指定討論室的完整記錄為 PDF 檔案，帶有美化排版和圖表。
     """
     if room not in ROOMS:
-        raise HTTPException(status_code=404, detail="找不到會議室")
+        raise HTTPException(status_code=404, detail="找不到討論室")
     room_data = ROOMS[room]
     room_topics = [t for t_id, t in topics.items() if t["room_id"] == room]
     # 過濾掉「AI 主題生成中...」等臨時主題
@@ -350,15 +350,15 @@ def add_topics_to_room(req: AddTopicsRequest):
 @router.get("/api/rooms")
 def get_rooms():
     """
-    獲取所有會議室資訊
+    獲取所有討論室資訊
 
     [GET] /api/rooms
 
     描述：
-    獲取所有已建立的會議室資訊。
+    獲取所有已建立的討論室資訊。
 
     回傳：
-    - rooms (list): 所有會議室的資訊列表，每個房間包含 code、title、created_at、participants、status、current_topic、topic_count、topic_summary、desired_outcome、countdown。
+    - rooms (list): 所有討論室的資訊列表，每個房間包含 code、title、created_at、participants、status、current_topic、topic_count、topic_summary、desired_outcome、countdown。
     """
     # 將房間狀態加入到每個房間資訊中
     rooms = []
@@ -388,12 +388,12 @@ class JoinRequest(BaseModel):
 @router.post("/api/participants/join")
 def join_participant(data: JoinRequest):
     """
-    參與者加入會議室
+    參與者加入討論室
     
     [POST] /api/participants/join
     
     描述：
-    參與者加入會議室，需提供房間代碼、暱稱與裝置ID。
+    參與者加入討論室，需提供房間代碼、暱稱與裝置ID。
     
     參數：
     - room (str): 房間代碼
@@ -401,7 +401,7 @@ def join_participant(data: JoinRequest):
     - device_id (str): 參與者裝置ID
     
     回傳：
-    - success (bool): 是否成功加入會議室
+    - success (bool): 是否成功加入討論室
     """
     room = data.room
     device_id = data.device_id
@@ -943,7 +943,7 @@ def update_participant_nickname(room: str, device_id: str, data: UpdateNicknameR
         raise HTTPException(status_code=400, detail="暱稱格式不符或過長")
 
     if room not in ROOMS:
-        raise HTTPException(status_code=404, detail="會議室不存在")
+        raise HTTPException(status_code=404, detail="討論室不存在")
     
     # 1. 更新參與者列表中的暱稱
     participant_found = False

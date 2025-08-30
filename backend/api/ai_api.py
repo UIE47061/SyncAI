@@ -52,31 +52,31 @@ async def ask_ai(req: AskRequest):
 
 # 定義用於 AI 總結的請求模型
 class SummaryRequest(BaseModel):
-    room: str  # 會議室代碼
+    room: str  # 討論室代碼
     topic: str # 要總結的主題
 
 @router.post("/summary")
 async def summary_ai(req: SummaryRequest):
     """
-    對指定會議室的特定主題進行 AI 總結
+    對指定討論室的特定主題進行 AI 總結
 
     [POST] /ai/summary
 
     參數：
-    - room (str): 會議室代碼
+    - room (str): 討論室代碼
     - topic (str): 要進行總結的主題名稱
 
     回傳：
     - summary (str): AI 生成的總結文字
     """
-    # 檢查會議室是否存在
+    # 檢查討論室是否存在
     if req.room not in ROOMS:
-        return {"summary": "錯誤：找不到指定的會議室。"}
+        return {"summary": "錯誤：找不到指定的討論室。"}
 
     # 組合主題 ID 並檢查主題是否存在
     topic_id = f"{req.room}_{req.topic}"
     if topic_id not in topics:
-        return {"summary": "錯誤：在該會議室中找不到指定的主題。"}
+        return {"summary": "錯誤：在該討論室中找不到指定的主題。"}
 
     # 使用prompt_builder的方法來建立 prompt
     prompt = prompt_builder.build_summary_prompt(req.room, req.topic)
@@ -86,22 +86,22 @@ async def summary_ai(req: SummaryRequest):
 
     # 使用透明融合系統生成摘要
     try:
-        # 獲取會議室資訊
+        # 獲取討論室資訊
         room_data = ROOMS[req.room]
-        room_title = room_data.get('title', f'會議室-{req.room}')
+        room_title = room_data.get('title', f'討論室-{req.room}')
         
-        # 優先使用會議創建時保存的workspace，如果不存在則創建
+        # 優先使用討論創建時保存的workspace，如果不存在則創建
         workspace_slug = room_data.get('workspace_slug')
         if not workspace_slug:
-            print(f"⚠️ 會議 {req.room} 沒有預設workspace，正在創建...")
+            print(f"⚠️ 討論 {req.room} 沒有預設workspace，正在創建...")
             workspace_slug = await ai_client.ensure_workspace_exists(req.room, room_title)
-            # 更新會議數據
+            # 更新討論數據
             ROOMS[req.room]['workspace_slug'] = workspace_slug
             workspace_info = await ai_client.get_workspace_info(workspace_slug)
             if workspace_info and "id" in workspace_info:
                 ROOMS[req.room]['workspace_id'] = workspace_info["id"]
         else:
-            print(f"✅ 使用會議專屬workspace: {workspace_slug}")
+            print(f"✅ 使用討論專屬workspace: {workspace_slug}")
         
         # 使用透明融合系統：NPU+CPU並行->NPU融合，提升摘要質量
         summary_text = await transparent_fusion.process_request(
@@ -115,14 +115,14 @@ async def summary_ai(req: SummaryRequest):
 
 async def _generate_topics_from_title(meeting_title: str, topic_count: int, workspace_slug: str = None) -> List[str]:
     """
-    根據會議標題生成主題的核心邏輯。
+    根據討論標題生成主題的核心邏輯。
     這是一個內部函式，旨在被其他 API 端點調用。
     """
     topic_count = max(1, min(10, topic_count))
     meeting_title = meeting_title.strip()
 
     if not meeting_title:
-        return ["錯誤：會議名稱不可為空。"]
+        return ["錯誤：討論名稱不可為空。"]
 
     prompt = prompt_builder.build_topics_generation_prompt(meeting_title, topic_count)
     
@@ -143,17 +143,17 @@ class GenerateTopicsRequest(BaseModel):
     """用於 AI 生成主題請求的模型"""
     meeting_title: str
     topic_count: int
-    room_code: Optional[str] = None  # 可選的會議代碼，如果提供則使用會議專屬workspace
+    room_code: Optional[str] = None  # 可選的討論代碼，如果提供則使用討論專屬workspace
 
 @router.post("/generate_topics")
 async def generate_ai_topics(req: GenerateTopicsRequest):
     """
-    根據會議名稱和指定數量，使用 AI 生成議程主題。
+    根據討論名稱和指定數量，使用 AI 生成議程主題。
 
     [POST] /ai/generate_topics
 
     參數：
-    - meeting_title (str): 會議的標題或主要目的。
+    - meeting_title (str): 討論的標題或主要目的。
     - topic_count (int): 希望生成的主題數量。
 
     回傳：
@@ -165,25 +165,25 @@ async def generate_ai_topics(req: GenerateTopicsRequest):
     meeting_title = req.meeting_title.strip()
 
     if not meeting_title:
-        return {"topics": ["錯誤：會議名稱不可為空。"]}
+        return {"topics": ["錯誤：討論名稱不可為空。"]}
 
     # 呼叫 AnythingLLM API
     try:
-        # 優先使用會議專屬workspace，如果沒有提供room_code則創建臨時workspace
+        # 優先使用討論專屬workspace，如果沒有提供room_code則創建臨時workspace
         if req.room_code and req.room_code in ROOMS:
-            # 使用真實會議的專屬workspace
+            # 使用真實討論的專屬workspace
             room_data = ROOMS[req.room_code]
             workspace_slug = room_data.get('workspace_slug')
             if not workspace_slug:
-                print(f"⚠️ 會議 {req.room_code} 沒有預設workspace，正在創建...")
+                print(f"⚠️ 討論 {req.room_code} 沒有預設workspace，正在創建...")
                 workspace_slug = await ai_client.ensure_workspace_exists(req.room_code, meeting_title)
-                # 更新會議數據
+                # 更新討論數據
                 ROOMS[req.room_code]['workspace_slug'] = workspace_slug
                 workspace_info = await ai_client.get_workspace_info(workspace_slug)
                 if workspace_info and "id" in workspace_info:
                     ROOMS[req.room_code]['workspace_id'] = workspace_info["id"]
             else:
-                print(f"✅ 使用會議專屬workspace: {workspace_slug}")
+                print(f"✅ 使用討論專屬workspace: {workspace_slug}")
         else:
             # 備選方案：為獨立的主題生成創建臨時workspace
             print(f"📝 為獨立主題生成創建臨時workspace...")
@@ -206,20 +206,20 @@ class GenerateSingleTopicRequest(BaseModel):
 @router.post("/generate_single_topic")
 async def generate_single_topic(req: GenerateSingleTopicRequest):
     """
-    根據會議室和自訂提示，使用 AI 生成單一議程主題。
+    根據討論室和自訂提示，使用 AI 生成單一議程主題。
 
     [POST] /ai/generate_single_topic
 
     參數：
-    - room (str): 會議室代碼
+    - room (str): 討論室代碼
     - custom_prompt (str): 自訂的提示語句，用於引導 AI 生成主題
 
     回傳：
     - topic (str): AI 生成的主題字串
     """
-    # 檢查會議室是否存在
+    # 檢查討論室是否存在
     if req.room not in ROOMS:
-        return {"topic": "錯誤：找不到指定的會議室。"}
+        return {"topic": "錯誤：找不到指定的討論室。"}
 
     room_data = ROOMS[req.room]
 
@@ -231,22 +231,22 @@ async def generate_single_topic(req: GenerateSingleTopicRequest):
 
     # 使用透明融合系統生成單一主題
     try:
-        # 獲取會議室資訊
+        # 獲取討論室資訊
         room_data = ROOMS[req.room]
-        room_title = room_data.get('title', f'會議室-{req.room}')
+        room_title = room_data.get('title', f'討論室-{req.room}')
         
-        # 優先使用會議創建時保存的workspace，如果不存在則創建
+        # 優先使用討論創建時保存的workspace，如果不存在則創建
         workspace_slug = room_data.get('workspace_slug')
         if not workspace_slug:
-            print(f"⚠️ 會議 {req.room} 沒有預設workspace，正在創建...")
+            print(f"⚠️ 討論 {req.room} 沒有預設workspace，正在創建...")
             workspace_slug = await ai_client.ensure_workspace_exists(req.room, room_title)
-            # 更新會議數據
+            # 更新討論數據
             ROOMS[req.room]['workspace_slug'] = workspace_slug
             workspace_info = await ai_client.get_workspace_info(workspace_slug)
             if workspace_info and "id" in workspace_info:
                 ROOMS[req.room]['workspace_id'] = workspace_info["id"]
         else:
-            print(f"✅ 使用會議專屬workspace: {workspace_slug}")
+            print(f"✅ 使用討論專屬workspace: {workspace_slug}")
         
         # 使用透明融合系統：NPU+CPU並行->NPU融合
         topic = await transparent_fusion.process_request(

@@ -10,13 +10,13 @@
         </div>
         <div class="nav-actions">
           <div class="room-info">
-            <span class="room-code">會議代碼: <strong>{{ roomCode || '------' }}</strong></span>
+            <span class="room-code">討論代碼: <strong>{{ roomCode || '------' }}</strong></span>
             <span class="participant-count">參與人數: <strong>{{ participantsList.length }}</strong></span>
             <span class="room-status" :class="'status-' + roomStatus.toLowerCase()" @click="toggleRoomStatus">
               狀態: <strong>{{ roomStatusText }}</strong>
             </span>
           </div>
-          <button class="btn btn-outline" @click="endRoom">結束會議</button>
+          <button class="btn btn-outline" @click="endRoom">結束討論</button>
         </div>
       </div>
     </nav>
@@ -449,7 +449,7 @@ async function loadRoom() {
       }
     } else {
       // 房間不存在的處理
-      showNotification('找不到指定的會議室', 'error')
+      showNotification('找不到指定的討論室', 'error')
       router.push('/')
     }
   } catch (error) {
@@ -461,7 +461,7 @@ async function loadRoom() {
 // --- AI 生成並逐一顯示主題 ---
 async function generateAndDisplayTopics() {
   // 1. 先清空現有主題並顯示載入狀態
-  const originalTitle = room.value?.title || '新會議'
+  const originalTitle = room.value?.title || '新討論'
   topics.value = [{ title: 'AI 主題生成中...', content: '', timestamp: '' }]
   selectedTopicIndex.value = 0
 
@@ -598,7 +598,7 @@ async function deleteQuestion(id) {
 }
 
 /*
- * 呼叫後端 API 以生成會議總結，並將結果顯示在指定的文字區塊中。
+ * 呼叫後端 API 以生成討論總結，並將結果顯示在指定的文字區塊中。
  */
 async function summaryAI() {
   const summaryButton = document.getElementById('summary-btn');
@@ -656,7 +656,7 @@ async function summaryAI() {
   } catch (error) {
     // --- 5. 處理所有可能發生的錯誤 ---
     console.error('生成 AI 總結時發生錯誤:', error);
-    alert('無法生成會議總結，請檢查網路連線或稍後再試。');
+    alert('無法生成討論總結，請檢查網路連線或稍後再試。');
 
   } finally {
     // --- 6. 無論成功或失敗，都恢復按鈕狀態 ---
@@ -737,7 +737,7 @@ async function clearAllQuestions() {
 // 清理臨時主題的手動功能
 async function cleanTempTopics() {
   if (!roomCode.value) {
-    showNotification('找不到會議室代碼', 'error')
+    showNotification('找不到討論室代碼', 'error')
     return
   }
 
@@ -777,14 +777,14 @@ function goToSummary() {
     path: '/meeting-summary',
     query: {
       room: roomCode.value,
-      title: room.value?.title || '未命名會議'
+      title: room.value?.title || '未命名討論'
     }
   })
 }
 
-// 會議控制
+// 討論控制
 async function endRoom() {
-  if (confirm('確定要結束會議嗎？這將關閉房間並跳轉到結算頁面。')) {
+  if (confirm('確定要結束討論嗎？這將關閉房間並跳轉到結算頁面。')) {
     try {
       // 停止計時器 (如果有運行的話)
       if (timerRunning.value) {
@@ -811,11 +811,11 @@ async function endRoom() {
         }
         await BackgroundStyleTracker.trackMeeting(meetingData) // 加 await
       } catch (styleError) {
-        console.warn('風格追蹤失敗，但會議正常結束:', styleError)
+        console.warn('風格追蹤失敗，但討論正常結束:', styleError)
       }
       
       // 顯示結束通知
-      showNotification('會議已結束，正在跳轉到結算頁面...', 'success')
+      showNotification('討論已結束，正在跳轉到結算頁面...', 'success')
       
       // 直接跳轉到結算頁面
       setTimeout(() => {
@@ -823,14 +823,14 @@ async function endRoom() {
           path: '/meeting-summary',
           query: {
             room: roomCode.value,
-            title: room.value?.title || '未命名會議'
+            title: room.value?.title || '未命名討論'
           }
         })
       }, 1000)
       
     } catch (error) {
-      console.error('結束會議失敗:', error)
-      showNotification('結束會議失敗，請稍後再試', 'error')
+      console.error('結束討論失敗:', error)
+      showNotification('結束討論失敗，請稍後再試', 'error')
     }
   }
 }
@@ -1292,7 +1292,7 @@ async function createNewTopicWithAI(aiPrompt) {
 
 async function exportAllTopics() {
   if (!roomCode.value) {
-    showNotification('找不到會議室代碼', 'error')
+    showNotification('找不到討論室代碼', 'error')
     return
   }
 
@@ -1421,7 +1421,7 @@ async function startTimer() {
     clearInterval(timerInterval.value)
   }
   
-  // 更新房間狀態為會議中
+  // 更新房間狀態為討論中
   await setRoomStatus('Discussion')
   
   // 記錄計時器開始時間
@@ -1482,7 +1482,7 @@ async function toggleTimer() {
     // stopTimer 已經會設置房間狀態為休息中
   } else {
     await startTimer()
-    // startTimer 已經會設置房間狀態為會議中
+    // startTimer 已經會設置房間狀態為討論中
     // 同步當前主題和計時狀態到參與者面板
     await setRoomState()
   }

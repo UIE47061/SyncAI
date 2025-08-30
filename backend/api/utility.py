@@ -53,30 +53,30 @@ def export_room_pdf(room, room_data, room_topics, votes, FONT_NAME):
 
     def footer(canvas, doc):
         canvas.saveState()
-        footer_text = f"MBBuddy 會議系統產生於 {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')} | 會議代碼: {room}"
+        footer_text = f"MBBuddy 討論系統產生於 {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')} | 討論代碼: {room}"
         p = Paragraph(footer_text, styles["FooterStyle"])
         w, h = p.wrap(doc.width, doc.bottomMargin)
         p.drawOn(canvas, doc.leftMargin, h)
         canvas.restoreState()
 
     story = []
-    story.append(Paragraph(room_data.get('title', '會議記錄'), styles['TitleStyle']))
+    story.append(Paragraph(room_data.get('title', '討論記錄'), styles['TitleStyle']))
     story.append(Spacer(1, 5))
     created_time = datetime.datetime.fromtimestamp(room_data.get('created_at', time.time())).strftime('%Y-%m-%d %H:%M')
     participants_count = len(room_data.get('participants_list', []))
     topics_count = len(room_topics)
-    info_text = f"<b>會議代碼:</b> {room}<br/>"
+    info_text = f"<b>討論代碼:</b> {room}<br/>"
     info_text += f"<b>建立時間:</b> {created_time}<br/>"
     info_text += f"<b>參與者數量:</b> {participants_count}<br/>"
     info_text += f"<b>主題數量:</b> {topics_count}<br/>"
     if room_data.get('topic_summary'):
-        info_text += f"<br/><b>會議摘要:</b><br/>{room_data['topic_summary']}<br/>"
+        info_text += f"<br/><b>討論摘要:</b><br/>{room_data['topic_summary']}<br/>"
     if room_data.get('desired_outcome'):
         info_text += f"<br/><b>預期成果:</b><br/>{room_data['desired_outcome']}<br/>"
     story.append(Paragraph(info_text, styles['InfoBoxStyle']))
     story.append(Spacer(1, 10))
     if not room_topics:
-        story.append(Paragraph("此會議尚未創建任何主題。", styles['BodyStyle']))
+        story.append(Paragraph("此討論尚未創建任何主題。", styles['BodyStyle']))
         doc.build(story, onFirstPage=footer, onLaterPages=footer)
         buffer.seek(0)
         encoded_filename = quote(room_data.get('title', f'MBBuddy-Report-{room}'))

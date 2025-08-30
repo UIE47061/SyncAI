@@ -35,7 +35,7 @@ export class BackgroundStyleTracker {
       if (response.ok) {
         const profile = await response.json()
         
-        console.log('📄 從 JSON 檔案載入風格檔案 (第 ' + profile.totalMeetings + ' 次會議)')
+        console.log('📄 從 JSON 檔案載入風格檔案 (第 ' + profile.totalMeetings + ' 次討論)')
         return profile
       } else {
         throw new Error('API 回應失敗')
@@ -215,7 +215,7 @@ export class BackgroundStyleTracker {
       profile.styles.structured += 1
     }
     
-    // 保存最近會議記錄
+    // 保存最近討論記錄
     profile.recentMeetings.push({
       timestamp: new Date().toISOString(),
       meetingNumber: profile.totalMeetings,
@@ -242,7 +242,7 @@ export class BackgroundStyleTracker {
     
     const styleDescriptions = {
       democratic: "重視所有參與者的聲音，善於平衡不同意見",
-      efficient: "注重會議效率，能有效推進討論進度", 
+      efficient: "注重討論效率，能有效推進討論進度", 
       engaging: "擅長營造互動氛圍，激發參與者積極性",
       structured: "偏好結構化討論，注重深度分析和總結"
     }
@@ -256,7 +256,7 @@ export class BackgroundStyleTracker {
       dominantStyle: dominantStyle,
       styleStrength: Math.round(styleStrength * 100),
       trend: trend,
-      text: `【第 ${profile.totalMeetings} 次會議風格分析】
+      text: `【第 ${profile.totalMeetings} 次討論風格分析】
 
 🎯 主要風格: ${styleDescriptions[dominantStyle]} (${Math.round(styleStrength * 100)}% 傾向)
 
@@ -332,7 +332,7 @@ ${trend ? `📈 變化趨勢: ${trend}` : ''}
     let baseAdvice = advice[style] || "持續觀察中，正在學習您的主持風格"
     
     if (meetingCount >= 5) {
-      baseAdvice += "。經過多次會議觀察，您的風格已趨於穩定"
+      baseAdvice += "。經過多次討論觀察，您的風格已趨於穩定"
     }
     if (meetingCount >= 10) {
       baseAdvice += "，可考慮嘗試新的主持技巧來進一步提升"
@@ -360,7 +360,7 @@ ${trend ? `📈 變化趨勢: ${trend}` : ''}
     const profile = await this.loadProfile()
     console.group('🎯 當前主持風格檔案 (JSON)')
     console.log('📊 基本資訊:', {
-      總會議數: profile.totalMeetings,
+      總討論數: profile.totalMeetings,
       迭代次數: profile.metadata?.iterationCount || 0,
       建立時間: profile.created,
       最後更新: profile.lastUpdated

@@ -2,7 +2,7 @@
   <div v-if="isVisible" class="qrcode-modal-overlay" @click.self="hideModal">
     <div class="qrcode-modal">
       <div class="qrcode-modal-header">
-        <h3>會議室 QR Code</h3>
+        <h3>討論室 QR Code</h3>
         <button class="btn-close" @click="hideModal">&times;</button>
       </div>
       <div class="qrcode-modal-body">
@@ -10,7 +10,7 @@
           <qrcode-vue :value="roomLink" :size="qrcodeSize" level="H" />
         </div>
         <div class="qrcode-modal-info">
-          <div class="qrcode-room-code">會議室代碼：{{ roomCode }}</div>
+          <div class="qrcode-room-code">討論室代碼：{{ roomCode }}</div>
           <div class="qrcode-link-text">{{ roomLink }}</div>
         </div>
       </div>

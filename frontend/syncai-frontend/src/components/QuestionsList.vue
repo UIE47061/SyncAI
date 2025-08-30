@@ -43,7 +43,7 @@
               <i class="fa-regular fa-comment-dots"></i>
             </div>
             <h3>等待參與者提問</h3>
-            <p>分享會議室代碼讓參與者加入並開始提問</p>
+            <p>分享討論室代碼讓參與者加入並開始提問</p>
           </div>
         </template>
         <template v-else>
@@ -56,7 +56,7 @@
             <template v-if="q.isAISummary">
               <div class="question-header">
                 <div class="question-text">
-                  <h3><i class="fa-solid fa-robot"></i> AI 會議總結</h3>
+                  <h3><i class="fa-solid fa-robot"></i> AI 討論總結</h3>
                   <div class="ai-content" v-html="q.content.replace(/\\n/g, '<br>')"></div>
                 </div>
                 <div class="question-actions">
