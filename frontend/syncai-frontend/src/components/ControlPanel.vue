@@ -3,10 +3,10 @@
     <div class="panel-header">
       <h2>控制區</h2>
       <div class="panel-tabs">
-        <button :class="{ active: activeTab === 'control' }" @click="setActiveTab('control')" title="會議控制">
+        <button :class="{ active: activeTab === 'control' }" @click="setActiveTab('control')" title="討論控制">
           <i class="fa-solid fa-gear"></i>
         </button>
-        <button :class="{ active: activeTab === 'info' }" @click="setActiveTab('info')" title="會議資訊">
+        <button :class="{ active: activeTab === 'info' }" @click="setActiveTab('info')" title="討論資訊">
           <i class="fa-solid fa-link"></i>
         </button>
         <button :class="{ active: activeTab === 'members' }" @click="setActiveTab('members')" title="成員名單">
@@ -15,12 +15,12 @@
       </div>
     </div>
 
-    <!-- 會議資訊頁籤 -->
+    <!-- 討論資訊頁籤 -->
     <template v-if="activeTab === 'info'">
       <div class="control-section">
         <div class="share-item">
           <div class="share-title-row">
-            <h3>會議連結</h3>
+            <h3>討論連結</h3>
             <button class="btn-qrcode" @click="showQRCode">
               開啟 QR Code
             </button>
@@ -71,7 +71,7 @@
                     type="text" 
                     :value="editRoomTitle" 
                     @input="$emit('update:edit-room-title', $event.target.value)"
-                    :placeholder="room?.title || '會議室名稱'"
+                    :placeholder="room?.title || '討論室名稱'"
                     maxlength="50"
                     class="form-input"
                   />
@@ -83,7 +83,7 @@
                   id="edit-room-summary"
                   :value="editRoomSummary"
                   @input="$emit('update:edit-room-summary', $event.target.value)"
-                  placeholder="輸入此會議的摘要資訊..."
+                  placeholder="輸入此討論的摘要資訊..."
                   rows="4"
                   class="form-input"
                 ></textarea>
@@ -111,7 +111,7 @@
       </div>
     </template>
 
-    <!-- 會議控制頁籤 -->
+    <!-- 討論控制頁籤 -->
     <template v-else-if="activeTab === 'control'">
       <div class="control-section">
         <div class="timer-header-row">

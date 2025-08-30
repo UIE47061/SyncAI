@@ -3,9 +3,11 @@ from pydantic import BaseModel
 from typing import Optional, List
 import random, string, time, uuid
 import platform
+import os
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from .utility import export_room_pdf
+from .ai_client import ai_client
 
 # --- Pydantic Models for RESTful API ---
 class CommentRequest(BaseModel):
@@ -88,18 +90,52 @@ def get_chinese_font():
         }
     else:  # Linux and others (常見路徑)
         font_map = {
-            'WenQuanYiMicroHei': '/usr/share/fonts/wenquanyi/wqy-microhei/wqy-microhei.ttc',
-            'NotoSansCJK': '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.otf',
+            # Noto 字體系列 (Google開源字體，支援廣泛)
+            'NotoSansCJK-Regular': '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
+            'NotoSansCJK': '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc',
+            'NotoSansTC': '/usr/share/fonts/opentype/noto/NotoSansTC-Regular.otf',
+            # 文泉驛字體系列
+            'WenQuanYiMicroHei': '/usr/share/fonts/truetype/wqy/wqy-microhei.ttc',
+            'WenQuanYiZenHei': '/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc',
+            # 其他常見位置
+            'WenQuanYiMicroHei-alt': '/usr/share/fonts/wenquanyi/wqy-microhei/wqy-microhei.ttc',
+            'NotoSansCJK-alt': '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.otf',
+            # Debian/Ubuntu 包管理器安裝的字體
+            'DejaVuSans': '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
         }
 
     # 遍歷字典，嘗試註冊第一個找到的字型
     for font_name, font_path in font_map.items():
         try:
             pdfmetrics.registerFont(TTFont(font_name, font_path))
-            print(f"PDF匯出：成功註冊字型 '{font_name}'")
+            print(f"PDF匯出：成功註冊字型 '{font_name}' 從路徑 '{font_path}'")
             return font_name
-        except Exception:
+        except Exception as e:
+            print(f"嘗試註冊字型 '{font_name}' 失敗: {e}")
             continue # 如果找不到或註冊失敗，繼續嘗試下一個
+    
+    # 如果預設路徑都失敗，嘗試使用系統命令查找字體
+    if os_type == 'Linux' or os_type not in ['Darwin', 'Windows']:
+        try:
+            import subprocess
+            # 使用 fc-list 命令查找可用的中文字體
+            result = subprocess.run(['fc-list', ':lang=zh'], capture_output=True, text=True, timeout=5)
+            if result.returncode == 0 and result.stdout:
+                lines = result.stdout.strip().split('\n')
+                for line in lines:
+                    if ':' in line:
+                        font_path = line.split(':')[0].strip()
+                        if font_path.endswith(('.ttf', '.ttc', '.otf')):
+                            try:
+                                font_name = f"SystemFont_{len(font_path)}"  # 使用唯一名稱
+                                pdfmetrics.registerFont(TTFont(font_name, font_path))
+                                print(f"PDF匯出：通過 fc-list 成功註冊字型 '{font_name}' 從路徑 '{font_path}'")
+                                return font_name
+                            except Exception as e:
+                                print(f"fc-list 找到的字體註冊失敗 '{font_path}': {e}")
+                                continue
+        except Exception as e:
+            print(f"使用 fc-list 查找字體時發生錯誤: {e}")
             
     # 如果所有預設字型都找不到，發出警告並使用備用字型
     print("警告：在系統預設路徑中找不到任何可用的中文字型，PDF 中文可能無法正常顯示。")
@@ -169,17 +205,17 @@ class RoomCreate(BaseModel):
     countdown: int = 15 * 60
 
 @router.post("/api/create_room")
-def create_room(room: RoomCreate):
+async def create_room(room: RoomCreate):
     """
-    建立會議室
+    建立討論室
 
     [POST] /api/create_room
 
     描述：
-    建立一個新的會議室。
+    建立一個新的討論室。
 
     參數：
-    - room.title (str): 會議室標題
+    - room.title (str): 討論室標題
     - room.topics (List[str]): 主題名稱列表
     - room.topic_summary (str, 選填): 題目摘要資訊
     - room.desired_outcome (str, 選填): 想達到效果
@@ -213,7 +249,25 @@ def create_room(room: RoomCreate):
         "topic_summary": (room.topic_summary or "").strip(),
         "desired_outcome": (room.desired_outcome or "").strip(),
         "topic_count": room.topic_count, # 使用前端傳來的值
+        "workspace_slug": None,  # 討論專屬的workspace slug
+        "workspace_id": None,    # 討論專屬的workspace id
     }
+    
+    # 立即為此討論創建專屬的workspace
+    try:
+        workspace_slug = await ai_client.ensure_workspace_exists(code, title)
+        # 從AnythingLLM API獲取workspace詳細信息包括ID
+        workspace_info = await ai_client.get_workspace_info(workspace_slug)
+        
+        ROOMS[code]["workspace_slug"] = workspace_slug
+        if workspace_info and "id" in workspace_info:
+            ROOMS[code]["workspace_id"] = workspace_info["id"]
+        
+        print(f"✅ 討論 '{title}' (代碼: {code}) 的專屬workspace已創建: {workspace_slug}")
+    except Exception as e:
+        print(f"⚠️ 為討論 '{title}' 創建workspace時發生錯誤: {e}")
+        # 不影響討論創建，workspace可以稍後創建
+        pass
     
     for topic_name in room_topics:
         topic_name_stripped = topic_name.strip()
@@ -236,10 +290,10 @@ def create_room(room: RoomCreate):
 @router.get("/api/export_pdf")
 def export_pdf(room: str):
     """
-    匯出指定會議室的完整記錄為 PDF 檔案，帶有美化排版和圖表。
+    匯出指定討論室的完整記錄為 PDF 檔案，帶有美化排版和圖表。
     """
     if room not in ROOMS:
-        raise HTTPException(status_code=404, detail="找不到會議室")
+        raise HTTPException(status_code=404, detail="找不到討論室")
     room_data = ROOMS[room]
     room_topics = [t for t_id, t in topics.items() if t["room_id"] == room]
     # 過濾掉「AI 主題生成中...」等臨時主題
@@ -296,15 +350,15 @@ def add_topics_to_room(req: AddTopicsRequest):
 @router.get("/api/rooms")
 def get_rooms():
     """
-    獲取所有會議室資訊
+    獲取所有討論室資訊
 
     [GET] /api/rooms
 
     描述：
-    獲取所有已建立的會議室資訊。
+    獲取所有已建立的討論室資訊。
 
     回傳：
-    - rooms (list): 所有會議室的資訊列表，每個房間包含 code、title、created_at、participants、status、current_topic、topic_count、topic_summary、desired_outcome、countdown。
+    - rooms (list): 所有討論室的資訊列表，每個房間包含 code、title、created_at、participants、status、current_topic、topic_count、topic_summary、desired_outcome、countdown。
     """
     # 將房間狀態加入到每個房間資訊中
     rooms = []
@@ -320,6 +374,8 @@ def get_rooms():
             "topic_summary": room.get("topic_summary", ""),
             "desired_outcome": room.get("desired_outcome", ""),
             "countdown": room.get("countdown", 0),
+            "workspace_slug": room.get("workspace_slug", ""),
+            "workspace_id": room.get("workspace_id", ""),
         }
         rooms.append(room_info)
     return {"rooms": rooms}
@@ -332,12 +388,12 @@ class JoinRequest(BaseModel):
 @router.post("/api/participants/join")
 def join_participant(data: JoinRequest):
     """
-    參與者加入會議室
+    參與者加入討論室
     
     [POST] /api/participants/join
     
     描述：
-    參與者加入會議室，需提供房間代碼、暱稱與裝置ID。
+    參與者加入討論室，需提供房間代碼、暱稱與裝置ID。
     
     參數：
     - room (str): 房間代碼
@@ -345,7 +401,7 @@ def join_participant(data: JoinRequest):
     - device_id (str): 參與者裝置ID
     
     回傳：
-    - success (bool): 是否成功加入會議室
+    - success (bool): 是否成功加入討論室
     """
     room = data.room
     device_id = data.device_id
@@ -887,7 +943,7 @@ def update_participant_nickname(room: str, device_id: str, data: UpdateNicknameR
         raise HTTPException(status_code=400, detail="暱稱格式不符或過長")
 
     if room not in ROOMS:
-        raise HTTPException(status_code=404, detail="會議室不存在")
+        raise HTTPException(status_code=404, detail="討論室不存在")
     
     # 1. 更新參與者列表中的暱稱
     participant_found = False

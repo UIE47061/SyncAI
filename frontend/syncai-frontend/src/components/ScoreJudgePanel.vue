@@ -3,7 +3,7 @@
     <!-- 加載狀態 -->
     <div v-if="loading" class="loading-container">
       <div class="loading-spinner"></div>
-      <p>正在載入會議數據...</p>
+      <p>正在載入討論數據...</p>
     </div>
 
     <!-- 主要內容 -->
@@ -13,10 +13,10 @@
         <div class="header-content">
           <h1>
             <i class="fa-solid fa-chart-line"></i>
-            會議結算報告
+            討論結算報告
           </h1>
           <p class="meeting-info">
-            會議主題：{{ meetingTitle }} | 
+            討論主題：{{ meetingTitle }} | 
             參與人數：{{ participants.length }} 人 |
             總留言：{{ questions.length }} 條
           </p>
@@ -33,7 +33,7 @@
         </div>
       </div>
 
-      <!-- 會議統計概覽 -->
+      <!-- 討論統計概覽 -->
       <div class="overview-section">
         <div class="stats-grid">
           <div class="stat-card">
@@ -87,7 +87,7 @@
             <i class="fa-regular fa-face-sad-tear"></i>
           </div>
           <h3>尚無參與者數據</h3>
-          <p>請確認會議中有參與者發言並返回主持台重新進入</p>
+          <p>請確認討論中有參與者發言並返回主持台重新進入</p>
         </div>
 
         <div v-else class="participants-list">
@@ -220,7 +220,7 @@ const props = defineProps({
   },
   meetingTitle: {
     type: String,
-    default: '未命名會議'
+    default: '未命名討論'
   }
 })
 
@@ -228,7 +228,7 @@ const props = defineProps({
 const loading = ref(true)
 const participants = ref([])
 const questions = ref([])
-const meetingTitle = ref(props.meetingTitle || route.query.title || '未命名會議')
+const meetingTitle = ref(props.meetingTitle || route.query.title || '未命名討論')
 const roomCode = ref(props.roomCode || route.query.room || '')
 
 // 計算屬性
@@ -255,7 +255,7 @@ const circumference = computed(() => 2 * Math.PI * 34)
 // 修正：從 HostPanel.vue 複製 exportAllTopics 函數
 async function exportAllTopics() {
   if (!roomCode.value) {
-    showNotification('找不到會議室代碼', 'error')
+    showNotification('找不到討論室代碼', 'error')
     return
   }
 
@@ -328,7 +328,7 @@ async function fetchMeetingData() {
   }
 
   try {
-    console.log('🔍 開始載入會議數據...')
+    console.log('🔍 開始載入討論數據...')
     
     // 直接獲取留言數據 - 這個端點是有效的
     const questionsResponse = await fetch(`${API_BASE_URL}/api/rooms/${roomCode.value}/comments`)
@@ -359,18 +359,18 @@ async function fetchMeetingData() {
       participants.value = []
     }
 
-    // 嘗試從第一個留言獲取會議相關資訊
+    // 嘗試從第一個留言獲取討論相關資訊
     if (questions.value.length > 0) {
       const firstComment = questions.value[0]
       if (firstComment.room_title && firstComment.room_title !== meetingTitle.value) {
         meetingTitle.value = firstComment.room_title
-        console.log('📝 從留言更新會議標題:', meetingTitle.value)
+        console.log('📝 從留言更新討論標題:', meetingTitle.value)
       }
     }
 
   } catch (error) {
-    console.error('❌ 載入會議數據失敗:', error)
-    showNotification('載入會議數據失敗，請稍後再試', 'error')
+    console.error('❌ 載入討論數據失敗:', error)
+    showNotification('載入討論數據失敗，請稍後再試', 'error')
   } finally {
     loading.value = false
   }
@@ -491,7 +491,7 @@ function backToHome() {
 onMounted(async () => {
   console.log('🚀 ScoreJudgePanel 初始化')
   console.log('📋 房間代碼:', roomCode.value)
-  console.log('📝 會議標題:', meetingTitle.value)
+  console.log('📝 討論標題:', meetingTitle.value)
   
   await fetchMeetingData()
 })

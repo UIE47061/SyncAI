@@ -3,7 +3,7 @@
   <div v-if="showNameModal" class="name-modal-overlay" @click.self="useAnonymous">
     <div class="name-modal">
       <div class="name-modal-header">
-        <h3>歡迎加入會議室</h3>
+        <h3>歡迎加入討論室</h3>
         <p>請輸入您的暱稱，或選擇以匿名身份參與</p>
       </div>
       <div class="name-modal-body">

@@ -9,8 +9,8 @@
           <!-- <span>互動問答平台</span> -->
         </div>
         <div class="nav-actions">
-          <button class="btn btn-outline" @click="showJoinModal = true">加入會議</button>
-          <button class="btn btn-primary" @click="showCreateModal = true">建立會議室</button>
+          <button class="btn btn-outline" @click="showJoinModal = true">加入討論</button>
+          <button class="btn btn-primary" @click="showCreateModal = true">建立討論室</button>
         </div>
       </div>
     </nav>
@@ -20,11 +20,11 @@
       <section class="hero">
         <div class="hero-content">
           <h2>讓每個聲音都被聽見</h2>
-          <p>建立互動會議室，讓參與者匿名提問、投票，讓會議更有參與感</p>
+          <p>建立互動討論室，讓參與者匿名提問、投票，讓討論更有參與感</p>
           <div class="hero-actions">
             <button class="btn btn-primary btn-large" @click="showCreateModal = true">
               <span>➕</span>
-              建立新會議室
+              建立新討論室
             </button>
           </div>
         </div>
@@ -50,7 +50,7 @@
       </section>
     </main>
 
-    <!-- 建立會議室 Modal -->
+    <!-- 建立討論室 Modal -->
     <CreateRoomModal 
       :visible="showCreateModal" 
       @close="showCreateModal = false"
@@ -58,7 +58,7 @@
       @show-notification="handleShowNotification"
     />
 
-    <!-- 加入會議室 Modal -->
+    <!-- 加入討論室 Modal -->
     <JoinRoomModal
       :visible="showJoinModal"
       @close="showJoinModal = false"
@@ -101,13 +101,13 @@ function handleShowNotification({ text, type }) {
 }
 
 function handleCreateSuccess(roomData) {
-  showNotification(`會議室建立成功！代碼：${roomData.code}`, 'success');
+  showNotification(`討論室建立成功！代碼：${roomData.code}`, 'success');
   // 立刻跳轉到主持人頁面
   router.push(`/host?room=${roomData.code}&new=true`);
 }
 
 function handleJoinSuccess(roomCode) {
-  showNotification('正在加入會議室...', 'success');
+  showNotification('正在加入討論室...', 'success');
   setTimeout(() => {
     router.push(`/participant?room=${roomCode}`);
   }, 1000);

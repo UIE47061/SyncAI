@@ -14,7 +14,7 @@ const routes = [
     name: 'MeetingSummary',
     props: route => ({
       roomCode: route.query.room,
-      meetingTitle: route.query.title || '未命名會議',
+      meetingTitle: route.query.title || '未命名討論',
       // 其他 props 可以根據需要添加
     })
   }

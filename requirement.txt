@@ -6,4 +6,11 @@ reportlab
 matplotlib
 networkx
 pillow
+# Local LLM dependencies
+llama-cpp-python>=0.2.0
+huggingface-hub>=0.19.0
+transformers
+torch
+# Platform optimization
+psutil
 numpy

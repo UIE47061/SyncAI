@@ -58,7 +58,7 @@
             <div class="empty-text">目前還沒有意見。</div>
           </div>
           <div v-else class="question-list">
-            <div v-for="q in questions" :key="q.id" class="question-item" :class="{ 'ai-summary-message': q.isAISummary }">
+            <div v-for="q in questions.slice().reverse()" :key="q.id" class="question-item" :class="{ 'ai-summary-message': q.isAISummary }">
               <div class="question-header">
                 <div class="question-meta">
                   <div class="meta-item" v-if="q.nickname"><i class="meta-icon fa-regular fa-user"></i><span>{{ q.nickname }}</span></div>
