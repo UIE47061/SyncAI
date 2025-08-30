@@ -7,11 +7,13 @@ services:
     container_name: syncai-backend
     ports:
       - "0.0.0.0:8000:8000"
+    env_file:
+      - ../.env
     environment:
       - PYTHONPATH=/app
       # AnythingLLM 配置 - 從容器內訪問主機服務
       - ANYTHINGLLM_BASE_URL=http://host.docker.internal:3001
-      - ANYTHINGLLM_API_KEY=PNB2B7R-4EC4P21-NM0XHTX-4BHZBHJ
+      - ANYTHINGLLM_API_KEY=${ANYTHINGLLM_API_KEY}
       - ANYTHINGLLM_WORKSPACE_SLUG=syncai
       - ANYTHINGLLM_DEBUG_THINKING=false
     extra_hosts:
@@ -21,7 +23,6 @@ services:
     restart: unless-stopped
     networks:
       - syncai-network
-
   frontend:
     build:
       context: ..
@@ -35,7 +36,6 @@ services:
     restart: unless-stopped
     networks:
       - syncai-network
-
 networks:
   syncai-network:
     driver: bridge
