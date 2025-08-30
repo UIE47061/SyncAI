@@ -330,34 +330,18 @@ async function fetchMeetingData() {
   try {
     console.log('🔍 開始載入會議數據...')
     
-    // 1. 獲取房間信息（包含參與者列表）
-    const roomResponse = await fetch(`${API_BASE_URL}/api/room/${roomCode.value}`)
-    if (roomResponse.ok) {
-      const roomData = await roomResponse.json()
-      console.log('🏠 房間數據:', roomData)
-      
-      // 更新會議標題
-      if (roomData.title) {
-        meetingTitle.value = roomData.title
-      }
-      
-      // 獲取參與者列表
-      const participantsList = roomData.participants || []
-      console.log('👥 房間內參與者:', participantsList)
-    }
-
-    // 2. 獲取留言數據 - 使用與 HostPanel 相同的端點
+    // 直接獲取留言數據 - 這個端點是有效的
     const questionsResponse = await fetch(`${API_BASE_URL}/api/rooms/${roomCode.value}/comments`)
     if (questionsResponse.ok) {
       const questionsData = await questionsResponse.json()
       questions.value = questionsData.comments || []
       console.log('📝 載入留言數據:', questions.value.length, '條')
-      console.log('📝 留言詳情:', questions.value)
     } else {
       console.error('獲取留言失敗:', questionsResponse.status)
+      questions.value = []
     }
 
-    // 3. 從留言中提取唯一的參與者
+    // 從留言中提取唯一的參與者
     const uniqueParticipants = [...new Set(
       questions.value
         .filter(q => q.nickname && !q.isAISummary)
@@ -366,7 +350,6 @@ async function fetchMeetingData() {
     
     console.log('👤 從留言提取的參與者:', uniqueParticipants)
 
-    // 4. 如果沒有從房間 API 獲取到參與者，使用從留言提取的參與者
     if (uniqueParticipants.length > 0) {
       // 計算每個參與者的分數
       participants.value = uniqueParticipants.map(calculateParticipantScore)
@@ -376,8 +359,18 @@ async function fetchMeetingData() {
       participants.value = []
     }
 
+    // 嘗試從第一個留言獲取會議相關資訊
+    if (questions.value.length > 0) {
+      const firstComment = questions.value[0]
+      if (firstComment.room_title && firstComment.room_title !== meetingTitle.value) {
+        meetingTitle.value = firstComment.room_title
+        console.log('📝 從留言更新會議標題:', meetingTitle.value)
+      }
+    }
+
   } catch (error) {
     console.error('❌ 載入會議數據失敗:', error)
+    showNotification('載入會議數據失敗，請稍後再試', 'error')
   } finally {
     loading.value = false
   }
