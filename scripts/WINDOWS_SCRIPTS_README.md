@@ -5,34 +5,48 @@
 ## 📁 腳本檔案說明
 
 ### 一鍵安裝腳本
+- **`one_click_install.bat`** - 🌟 **新增** 完整的一鍵安裝腳本（包含 AnythingLLM 設置）
 - **`install_syncai.bat`** - 完整的一鍵安裝腳本（包含 git clone）
 - **`quick_deploy.bat`** - 快速部署腳本（適用於已有專案目錄）
 
 ### 控制腳本
+- **`redeploy.bat`** - 🌟 **新增** 快速重新部署腳本
 - **`control_panel.bat`** - 圖形化控制面板（推薦使用）
 - **`start_dev.bat`** - 啟動開發環境
 - **`stop_dev.bat`** - 停止開發環境
 
 ### 輔助腳本
+- **`install_docker.bat`** - 自動安裝 Docker Desktop
 - **`download_model.bat`** - 下載 AI 模型
 - **`setup_dev.bat`** - 設置開發環境
 
 ## 🚀 快速開始
 
-### 方案一：全新安裝（推薦新用戶）
+### 方案一：全新完整安裝（推薦）🌟
+
+1. 確保您在 SyncAI 專案根目錄中
+2. 雙擊運行 `one_click_install.bat`
+3. 按照腳本引導完成：
+   - Docker Desktop 安裝
+   - AnythingLLM 下載和設置
+   - API 金鑰獲取和配置
+   - 服務部署和啟動
+4. 完成安裝！
+
+### 方案二：全新安裝（包含 git clone）
 
 1. 創建一個新目錄（例如：`C:\SyncAI-Install`）
 2. 下載 `install_syncai.bat` 到該目錄
 3. 雙擊運行 `install_syncai.bat`
 4. 按照提示完成安裝
 
-### 方案二：已有專案目錄
+### 方案三：已有專案目錄
 
 1. 確保您在 SyncAI 專案根目錄中
 2. 雙擊運行 `quick_deploy.bat`
 3. 等待部署完成
 
-### 方案三：使用控制面板（推薦）
+### 方案四：使用控制面板
 
 1. 雙擊運行 `control_panel.bat`
 2. 選擇對應的操作選項
@@ -50,7 +64,44 @@
 - **硬碟空間**: 至少 10GB 可用空間
 - **網路**: 穩定的網際網路連線（用於下載模型和映像）
 
+### 新增需求（一鍵安裝）🌟
+- **AnythingLLM Desktop** - 需要手動下載安裝，腳本會提供詳細指引
+
 ## 🔧 安裝步驟詳解
+
+### 一鍵安裝流程 (one_click_install.bat) 🌟
+
+1. **Docker Desktop 檢查和安裝**
+   - 自動檢查 Docker 是否已安裝
+   - 如未安裝，自動下載並安裝
+   - 驗證 Docker 服務運行狀態
+
+2. **AnythingLLM 設置指南**
+   - 提供下載連結和安裝指引
+   - 引導創建工作區設置
+   - 確認服務運行狀態
+
+3. **API 金鑰獲取**
+   - 自動打開 AnythingLLM 管理介面
+   - 引導獲取 API 金鑰
+   - 驗證金鑰格式
+
+4. **環境變數配置**
+   - 自動設置系統環境變數
+   - 創建 .env 檔案
+   - 更新 docker-compose.yml 配置
+
+5. **服務部署**
+   - 自動構建和啟動服務
+   - 等待服務完全啟動
+   - 驗證部署狀態
+
+6. **完成設置**
+   - 顯示訪問地址
+   - 提供控制指令
+   - 使用說明和維護指南
+
+### 傳統安裝流程
 
 ### 1. Git Clone
 - 自動從 GitHub 克隆最新版本
